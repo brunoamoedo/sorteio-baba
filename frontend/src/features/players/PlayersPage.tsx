@@ -12,7 +12,7 @@ import { getApiErrorMessage, queryStore, useApiMutation, useApiQuery } from "../
 import { useDebouncedValue } from "../../core/hooks/useDebouncedValue";
 import type { LinkableUser, Player, Position } from "../../core/types/player";
 import { AppLayout } from "../../shared/layout/AppLayout";
-import { AddIcon, DeleteIcon, EditIcon, SearchIcon } from "../../shared/icons";
+import { AddIcon, DeleteIcon, EditIcon, PrintIcon, SearchIcon } from "../../shared/icons";
 import { ConfirmDialog } from "../../shared/components/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../shared/components/DataTable";
 import { FilterSheet, type ActiveFilterChip } from "../../shared/components/FilterSheet";
@@ -29,6 +29,7 @@ import { matchKeys } from "../matches/matchQueries";
 import { useOrganization } from "../organization/OrganizationContext";
 import { PlayerCard } from "./PlayerCard";
 import { PlayerFormDrawer } from "./PlayerFormDrawer";
+import { PlayersPrintSheet } from "./PlayersPrintSheet";
 
 export function PlayersPage() {
   const { currentMembership } = useOrganization();
@@ -256,178 +257,208 @@ export function PlayersPage() {
 
   return (
     <AppLayout>
-      <PageHeader
-        title="Jogadores"
-        action={
-          canManage && (
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateForm}>
-              Novo jogador
-            </Button>
-          )
-        }
-      />
-
-      {/* A busca fica sempre à mão — é o filtro que se usa de verdade. Os
-          demais moram no painel, para não consumirem meia tela no celular. */}
-      <TextField
-        fullWidth
-        label="Buscar jogador"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        slotProps={{ input: { startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} /> } }}
-        sx={{ mb: 2 }}
-      />
-
-      <FilterSheet
-        open={filtersOpen}
-        onOpen={() => setFiltersOpen(true)}
-        onClose={() => setFiltersOpen(false)}
-        active={activeFilterChips}
-        onClearAll={() => setFilters({})}
-        resultCount={playersQuery.data?.length}
-      >
-        <TextField
-          select
-          fullWidth
-          label="Status"
-          value={filters.status ?? ""}
-          onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value || undefined }))}
-        >
-          <MenuItem value="">Todos</MenuItem>
-          <MenuItem value="ativo">Ativo</MenuItem>
-          <MenuItem value="inativo">Inativo</MenuItem>
-        </TextField>
-        <TextField
-          select
-          fullWidth
-          label="Tipo"
-          value={filters.player_type ?? ""}
-          onChange={(e) => setFilters((f) => ({ ...f, player_type: e.target.value || undefined }))}
-        >
-          <MenuItem value="">Todos</MenuItem>
-          <MenuItem value="mensalista">Mensalista</MenuItem>
-          <MenuItem value="convidado">Convidado</MenuItem>
-        </TextField>
-      </FilterSheet>
-
-      <DataTable
-        columns={columns}
-        rows={playersQuery.data}
-        getRowKey={(player) => player.id}
-        selection={canManage ? { selectedIds, onChange: setSelectedIds } : undefined}
-        loading={playersQuery.isLoading}
-        error={
-          playersQuery.isError
-            ? getApiErrorMessage(playersQuery.error, "Não foi possível carregar os jogadores.")
-            : null
-        }
-        onRetry={() => playersQuery.refetch()}
-        emptyMessage="Nenhum jogador encontrado."
-        emptyAction={
-          canManage && !hasActiveFilters ? (
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateForm}>
-              Cadastrar o primeiro jogador
-            </Button>
-          ) : undefined
-        }
-        renderCard={(player) => (
-          <PlayerCard
-            player={player}
-            positionName={positionName(player.primary_position)}
-            canManage={canManage}
-            onEdit={openEditForm}
-            onDelete={setPlayerToDelete}
-          />
-        )}
-      />
-
-      {/* Barra de ação em lote **fixa**: antes ela ficava no topo e sumia da
-          tela assim que a pessoa rolava a lista para escolher mais gente. */}
-      {canManage && selectedCount > 0 && (
-        <Paper
-          elevation={8}
-          className="safe-bottom"
-          sx={{
-            position: "fixed",
-            left: 0,
-            right: 0,
-            bottom: { xs: 60, md: 0 },
-            zIndex: (t) => t.zIndex.appBar - 1,
-            borderRadius: 0,
-            borderTop: "1px solid",
-            borderColor: "divider",
-            px: 2,
-            py: 1.5,
-          }}
-        >
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={1}
-            sx={{ alignItems: { sm: "center" }, maxWidth: 1200, mx: "auto" }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 700, flexGrow: 1 }}>
-              {selectedCount} jogador(es) selecionado(s)
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-              <Button size="small" disabled={bulkMutation.isPending} onClick={() => runBulk("ativo")}>
-                Ativar
-              </Button>
-              <Button size="small" disabled={bulkMutation.isPending} onClick={() => runBulk("inativo")}>
-                Inativar
-              </Button>
-              <Button
-                size="small"
-                color="error"
-                disabled={bulkMutation.isPending}
-                onClick={() => setBulkToConfirm("delete")}
-              >
-                Remover
-              </Button>
-              <Button size="small" color="inherit" onClick={() => setSelectedIds(new Set())}>
-                Limpar
-              </Button>
-            </Stack>
-          </Stack>
-        </Paper>
-      )}
-
-      <PlayerFormDrawer
-        open={formOpen}
-        onClose={closeForm}
-        onSubmit={handleFormSubmit}
+      {/* Sai no papel; invisível na tela. Leva **os jogadores que estão à
+          vista**, com os filtros aplicados — e a folha diz quais eram, senão um
+          PDF filtrado passa por elenco completo. */}
+      <PlayersPrintSheet
+        players={playersQuery.data ?? []}
         positions={positionsQuery.data ?? []}
-        linkableUsers={linkableUsersQuery.data ?? []}
-        player={editingPlayer}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-        error={
-          createMutation.isError || updateMutation.isError
-            ? getApiErrorMessage(
-                createMutation.error ?? updateMutation.error,
-                "Não foi possível salvar o jogador. Confira os dados.",
-              )
-            : null
-        }
+        organizationName={currentMembership?.organization?.name}
+        filters={activeFilters}
       />
 
-      <ConfirmDialog
-        open={!!playerToDelete}
-        title="Remover jogador"
-        description={`Tem certeza que deseja remover ${playerToDelete?.name}? O histórico de sorteios é preservado.`}
-        confirmLabel="Remover"
-        isConfirming={deleteMutation.isPending}
-        onConfirm={() => playerToDelete && deleteMutation.mutate(playerToDelete.id)}
-        onClose={() => setPlayerToDelete(null)}
-      />
+      {/* Tudo daqui para baixo é a tela: busca, filtros, seleção e os
+          botões de editar e apagar. Nada disso pertence a um documento, e
+          um contêiner só evita ter de marcar cada componente — vários nem
+          repassam `className`. */}
+      <Box className="no-print">
+        <PageHeader
+          title="Jogadores"
+          action={
+            <Stack direction="row" spacing={1}>
+              {/* Gera o PDF pelo diálogo do próprio navegador ("Salvar como
+                  PDF"), no computador e no celular. O que vai para o papel é a
+                  `PlayersPrintSheet`, não esta lista — ver `printStyles.ts`. */}
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                onClick={() => window.print()}
+                disabled={!playersQuery.data?.length}
+              >
+                Gerar PDF
+              </Button>
+              {canManage && (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateForm}>
+                  Novo jogador
+                </Button>
+              )}
+            </Stack>
+          }
+        />
 
-      <ConfirmDialog
-        open={bulkToConfirm === "delete"}
-        title="Remover jogadores selecionados"
-        description={`Tem certeza que deseja remover ${selectedCount} jogador(es)? O histórico de sorteios é preservado.`}
-        confirmLabel="Remover"
-        isConfirming={bulkMutation.isPending}
-        onConfirm={() => runBulk("delete")}
-        onClose={() => setBulkToConfirm(null)}
-      />
+
+        {/* A busca fica sempre à mão — é o filtro que se usa de verdade. Os
+            demais moram no painel, para não consumirem meia tela no celular. */}
+        <TextField
+          fullWidth
+          label="Buscar jogador"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          slotProps={{ input: { startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} /> } }}
+          sx={{ mb: 2 }}
+        />
+
+        <FilterSheet
+          open={filtersOpen}
+          onOpen={() => setFiltersOpen(true)}
+          onClose={() => setFiltersOpen(false)}
+          active={activeFilterChips}
+          onClearAll={() => setFilters({})}
+          resultCount={playersQuery.data?.length}
+        >
+          <TextField
+            select
+            fullWidth
+            label="Status"
+            value={filters.status ?? ""}
+            onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+          >
+            <MenuItem value="">Todos</MenuItem>
+            <MenuItem value="ativo">Ativo</MenuItem>
+            <MenuItem value="inativo">Inativo</MenuItem>
+          </TextField>
+          <TextField
+            select
+            fullWidth
+            label="Tipo"
+            value={filters.player_type ?? ""}
+            onChange={(e) => setFilters((f) => ({ ...f, player_type: e.target.value || undefined }))}
+          >
+            <MenuItem value="">Todos</MenuItem>
+            <MenuItem value="mensalista">Mensalista</MenuItem>
+            <MenuItem value="convidado">Convidado</MenuItem>
+          </TextField>
+        </FilterSheet>
+
+        <DataTable
+          columns={columns}
+          rows={playersQuery.data}
+          getRowKey={(player) => player.id}
+          selection={canManage ? { selectedIds, onChange: setSelectedIds } : undefined}
+          loading={playersQuery.isLoading}
+          error={
+            playersQuery.isError
+              ? getApiErrorMessage(playersQuery.error, "Não foi possível carregar os jogadores.")
+              : null
+          }
+          onRetry={() => playersQuery.refetch()}
+          emptyMessage="Nenhum jogador encontrado."
+          emptyAction={
+            canManage && !hasActiveFilters ? (
+              <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateForm}>
+                Cadastrar o primeiro jogador
+              </Button>
+            ) : undefined
+          }
+          renderCard={(player) => (
+            <PlayerCard
+              player={player}
+              positionName={positionName(player.primary_position)}
+              canManage={canManage}
+              onEdit={openEditForm}
+              onDelete={setPlayerToDelete}
+            />
+          )}
+        />
+
+        {/* Barra de ação em lote **fixa**: antes ela ficava no topo e sumia da
+            tela assim que a pessoa rolava a lista para escolher mais gente. */}
+        {canManage && selectedCount > 0 && (
+          <Paper
+            elevation={8}
+            className="safe-bottom"
+            sx={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: { xs: 60, md: 0 },
+              zIndex: (t) => t.zIndex.appBar - 1,
+              borderRadius: 0,
+              borderTop: "1px solid",
+              borderColor: "divider",
+              px: 2,
+              py: 1.5,
+            }}
+          >
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              sx={{ alignItems: { sm: "center" }, maxWidth: 1200, mx: "auto" }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 700, flexGrow: 1 }}>
+                {selectedCount} jogador(es) selecionado(s)
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+                <Button size="small" disabled={bulkMutation.isPending} onClick={() => runBulk("ativo")}>
+                  Ativar
+                </Button>
+                <Button size="small" disabled={bulkMutation.isPending} onClick={() => runBulk("inativo")}>
+                  Inativar
+                </Button>
+                <Button
+                  size="small"
+                  color="error"
+                  disabled={bulkMutation.isPending}
+                  onClick={() => setBulkToConfirm("delete")}
+                >
+                  Remover
+                </Button>
+                <Button size="small" color="inherit" onClick={() => setSelectedIds(new Set())}>
+                  Limpar
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        )}
+
+        <PlayerFormDrawer
+          open={formOpen}
+          onClose={closeForm}
+          onSubmit={handleFormSubmit}
+          positions={positionsQuery.data ?? []}
+          linkableUsers={linkableUsersQuery.data ?? []}
+          player={editingPlayer}
+          isSubmitting={createMutation.isPending || updateMutation.isPending}
+          error={
+            createMutation.isError || updateMutation.isError
+              ? getApiErrorMessage(
+                  createMutation.error ?? updateMutation.error,
+                  "Não foi possível salvar o jogador. Confira os dados.",
+                )
+              : null
+          }
+        />
+
+        <ConfirmDialog
+          open={!!playerToDelete}
+          title="Remover jogador"
+          description={`Tem certeza que deseja remover ${playerToDelete?.name}? O histórico de sorteios é preservado.`}
+          confirmLabel="Remover"
+          isConfirming={deleteMutation.isPending}
+          onConfirm={() => playerToDelete && deleteMutation.mutate(playerToDelete.id)}
+          onClose={() => setPlayerToDelete(null)}
+        />
+
+        <ConfirmDialog
+          open={bulkToConfirm === "delete"}
+          title="Remover jogadores selecionados"
+          description={`Tem certeza que deseja remover ${selectedCount} jogador(es)? O histórico de sorteios é preservado.`}
+          confirmLabel="Remover"
+          isConfirming={bulkMutation.isPending}
+          onConfirm={() => runBulk("delete")}
+          onClose={() => setBulkToConfirm(null)}
+        />
+      </Box>
     </AppLayout>
   );
 }

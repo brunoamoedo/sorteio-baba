@@ -36,7 +36,7 @@ export function BottomNav({ items, pathname, onNavigate, onOpenMenu }: BottomNav
   return (
     <Paper
       elevation={0}
-      className="safe-bottom"
+      className="safe-bottom no-print"
       sx={{
         position: "fixed",
         bottom: 0,

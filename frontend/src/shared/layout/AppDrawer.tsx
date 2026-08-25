@@ -75,6 +75,9 @@ export function AppDrawer({
       anchor="left"
       open={open}
       onClose={onClose}
+      // Fechado ele nem esta no DOM, mas imprimir com o menu aberto e um
+      // acidente barato de evitar.
+      className="no-print"
       slotProps={{ paper: { sx: { width: { xs: "86vw", sm: 300 }, maxWidth: 320 } } }}
     >
       <Box

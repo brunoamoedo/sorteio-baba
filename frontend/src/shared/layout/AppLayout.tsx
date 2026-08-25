@@ -4,6 +4,7 @@ import {
   AppBar,
   Box,
   Container,
+  GlobalStyles,
   IconButton,
   Tab,
   Tabs,
@@ -18,6 +19,7 @@ import { DarkModeIcon, LightModeIcon, MenuIcon } from "../icons";
 import { useAuth } from "../../features/auth/AuthContext";
 import { useOrganization } from "../../features/organization/OrganizationContext";
 import { useColorMode } from "../theme/ColorModeContext";
+import { PRINT_STYLES } from "./printStyles";
 import { AppDrawer } from "./AppDrawer";
 import { BOTTOM_NAV_HEIGHT, BottomNav } from "./BottomNav";
 import { UserMenu } from "./UserMenu";
@@ -82,7 +84,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
       {/* `sticky`: em telas longas (partida com 30 jogadores) o cabeçalho
           continuava rolando para fora e não havia como voltar ao menu sem subir
           a página inteira. */}
-      <AppBar component="header" position="sticky" color="default" elevation={0}>
+      <GlobalStyles styles={PRINT_STYLES} />
+
+      <AppBar
+        component="header"
+        position="sticky"
+        color="default"
+        elevation={0}
+        // Cabecalho, menu e barra inferior saem do papel. Estava faltando: a
+        // impressao do resultado do sorteio levava o menu do sistema junto.
+        className="no-print"
+      >
         <Toolbar sx={{ justifyContent: "space-between", gap: 1 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1, md: 3 }, minWidth: 0 }}>
             {isMobile && (
