@@ -28,3 +28,11 @@ Thumbs.db
 # Produção — segredos do servidor, nunca versionados.
 .env.prod
 data/
+
+# Dumps e backups do banco. `dados.json` é o nome que o DEPLOY.md manda usar
+# para levar os dados de desenvolvimento ao servidor, e ele sai do `dumpdata`
+# na raiz do repositório — a um `git add -A` de ser versionado. Dentro vão
+# telefones, o financeiro da pelada e os hashes de senha de todo mundo.
+dados.json
+*.sql
+*.sql.gz
