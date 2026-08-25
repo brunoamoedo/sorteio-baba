@@ -19,6 +19,7 @@ import { EmptyState } from "../../shared/components/EmptyState";
 import { PlayerAvatar } from "../../shared/components/PlayerAvatar";
 import { SegmentedControl } from "../../shared/components/SegmentedControl";
 import { StatusChip, playerTypeLabel, playerTypeTone } from "../../shared/components/StatusChip";
+import { normalizeSearch } from "../../shared/searchText";
 
 import type { RosterEntry } from "../../core/types/match";
 
@@ -39,15 +40,6 @@ interface PresencePanelProps {
   onGuestNameChange: (value: string) => void;
   onAddGuest: () => void;
   isAddingGuest: boolean;
-}
-
-/** Remove acentos e caixa para a busca casar "Joao" com "João" — é o que a
- * pessoa digita com pressa à beira do campo. */
-function normalize(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
 }
 
 /**
@@ -134,7 +126,7 @@ export function PresencePanel({
   );
 
   const visible = useMemo(() => {
-    const term = normalize(search.trim());
+    const term = normalizeSearch(search.trim());
     return orderedRoster.filter((entry) => {
       const matchesFilter =
         filter === "todos" ||
@@ -146,8 +138,8 @@ export function PresencePanel({
       if (!matchesFilter) return false;
       if (!term) return true;
       return (
-        normalize(entry.player.name).includes(term) ||
-        normalize(entry.player.nickname ?? "").includes(term)
+        normalizeSearch(entry.player.name).includes(term) ||
+        normalizeSearch(entry.player.nickname ?? "").includes(term)
       );
     });
   }, [orderedRoster, filter, search]);

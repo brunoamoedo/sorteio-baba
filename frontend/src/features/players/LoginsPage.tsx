@@ -6,12 +6,14 @@ import {
   CardContent,
   Checkbox,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 
 import { playersApi } from "../../api/playersApi";
 import { getApiErrorMessage, queryStore, useApiMutation, useApiQuery } from "../../core/data";
 import type { BulkResult, LoginStatusRow } from "../../core/types/player";
+import { SearchIcon } from "../../shared/icons";
 import { AppLayout } from "../../shared/layout/AppLayout";
 import { BulkActionBar } from "../../shared/components/BulkActionBar";
 import { DataTable, type DataTableColumn } from "../../shared/components/DataTable";
@@ -19,6 +21,7 @@ import { PageHeader } from "../../shared/components/PageHeader";
 import { StatusChip } from "../../shared/components/StatusChip";
 import { useToast } from "../../shared/components/ToastProvider";
 import { useSelection } from "../../shared/hooks/useSelection";
+import { normalizeSearch } from "../../shared/searchText";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 const LOGIN_STATUS_KEY = ["players", "login-status"];
@@ -44,15 +47,40 @@ export function LoginsPage() {
   const query = useApiQuery<LoginStatusRow[]>(LOGIN_STATUS_KEY, playersApi.loginStatus);
   const linhas = useMemo(() => query.data ?? [], [query.data]);
 
+  /** A lista inteira já vem do servidor, então a busca é local — sem ida à API
+   * e sem espera. Casa por **nome ou telefone**: aqui o telefone não é um dado
+   * a mais, é o próprio usuário que a pessoa vai digitar para entrar. */
+  const [busca, setBusca] = useState("");
+  const visiveis = useMemo(() => {
+    const termo = normalizeSearch(busca.trim());
+    if (!termo) return linhas;
+    // Os dígitos separados: quem procura "91434" não digita a máscara.
+    const digitos = termo.replace(/\D/g, "");
+    return linhas.filter(
+      (linha) =>
+        normalizeSearch(linha.player_name).includes(termo) ||
+        normalizeSearch(linha.player_nickname).includes(termo) ||
+        (!!digitos && linha.phone_digits.includes(digitos)),
+    );
+  }, [linhas, busca]);
+
   /** Só quem pode receber entra na seleção: marcar quem já tem login seria
    * oferecer uma ação que o servidor vai pular de qualquer jeito. */
   const selecionaveis = useMemo(
+    () => visiveis.filter((linha) => linha.blocked_reason === null).map((linha) => linha.player_id),
+    [visiveis],
+  );
+  /** Podado contra a lista **inteira**, não contra a filtrada: quem foi
+   * selecionado e depois saiu de vista pela busca continua selecionado — a
+   * barra de ações mostra a contagem, e perder a seleção ao digitar seria
+   * exatamente o contrário do que a busca serve para fazer. */
+  const todosSelecionaveis = useMemo(
     () => linhas.filter((linha) => linha.blocked_reason === null).map((linha) => linha.player_id),
     [linhas],
   );
   useEffect(() => {
-    selection.keepOnly(selecionaveis);
-  }, [selecionaveis, selection]);
+    selection.keepOnly(todosSelecionaveis);
+  }, [todosSelecionaveis, selection]);
 
   const invalidate = () => queryStore.invalidate(LOGIN_STATUS_KEY);
 
@@ -129,7 +157,11 @@ export function LoginsPage() {
     },
   ];
 
-  const semLoginCount = linhas.filter((linha) => linha.blocked_reason === null).length;
+  const buscando = busca.trim().length > 0;
+  /** O botão do cabeçalho age sobre **o que está na tela**. Com a busca ativa,
+   * "gerar para todos" criaria acesso para gente que a pessoa não está vendo —
+   * e criar login é ação que não se desfaz com um clique. */
+  const alvoDoBotao = selecionaveis;
 
   return (
     <AppLayout>
@@ -138,10 +170,10 @@ export function LoginsPage() {
         action={
           <Button
             variant="contained"
-            disabled={semLoginCount === 0 || generateMutation.isPending}
+            disabled={alvoDoBotao.length === 0 || generateMutation.isPending}
             onClick={() => setConfirming("generate")}
           >
-            Gerar para todos ({semLoginCount})
+            {buscando ? "Gerar para os encontrados" : "Gerar para todos"} ({alvoDoBotao.length})
           </Button>
         }
       />
@@ -152,24 +184,40 @@ export function LoginsPage() {
         senha própria — até lá, não consegue usar mais nada.
       </Alert>
 
+      <TextField
+        fullWidth
+        label="Buscar por nome ou telefone"
+        value={busca}
+        onChange={(event) => setBusca(event.target.value)}
+        slotProps={{ input: { startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} /> } }}
+        sx={{ mb: 2 }}
+      />
+
       {selecionaveis.length > 0 && (
         <Stack direction="row" sx={{ alignItems: "center", mb: 1 }}>
           <Checkbox
             size="small"
             checked={selection.allSelected(selecionaveis)}
             indeterminate={selection.someSelected(selecionaveis)}
-            slotProps={{ input: { "aria-label": "Selecionar todos os jogadores sem login" } }}
+            slotProps={{
+              input: {
+                "aria-label": buscando
+                  ? "Selecionar os jogadores sem login encontrados"
+                  : "Selecionar todos os jogadores sem login",
+              },
+            }}
             onChange={() => selection.toggleAll(selecionaveis)}
           />
           <Typography variant="body2" color="text.secondary">
-            Selecionar todos sem login ({selecionaveis.length})
+            {buscando ? "Selecionar os encontrados sem login" : "Selecionar todos sem login"} (
+            {selecionaveis.length})
           </Typography>
         </Stack>
       )}
 
       <DataTable
         columns={colunas}
-        rows={linhas}
+        rows={visiveis}
         getRowKey={(linha) => linha.player_id}
         loading={query.isLoading}
         error={
@@ -178,7 +226,9 @@ export function LoginsPage() {
             : null
         }
         onRetry={() => query.refetch()}
-        emptyMessage="Nenhum mensalista cadastrado."
+        emptyMessage={
+          buscando ? "Nenhum jogador encontrado." : "Nenhum mensalista cadastrado."
+        }
         defaultSortKey="player"
         // A `DataTable` ordena decrescente por padrão, o que é certo para data
         // e valor e errado para gente: a lista abria no fim do alfabeto.
@@ -240,13 +290,25 @@ export function LoginsPage() {
         isSubmitting={generateMutation.isPending}
         onClose={() => setConfirming(null)}
         onConfirm={() =>
-          generateMutation.mutate(selection.count > 0 ? [...selection.selected] : undefined)
+          generateMutation.mutate(
+            selection.count > 0
+              ? [...selection.selected]
+              : // Sem busca, `undefined` deixa o servidor resolver "todos os
+                // mensalistas" — é ele quem tem a lista completa.
+                buscando
+                ? alvoDoBotao
+                : undefined,
+          )
         }
       >
         <Typography variant="body2">
           Você está criando acesso para{" "}
           <strong>
-            {selection.count > 0 ? `${selection.count} jogador(es)` : `todos os ${semLoginCount}`}
+            {selection.count > 0
+              ? `${selection.count} jogador(es)`
+              : buscando
+                ? `os ${alvoDoBotao.length} encontrado(s)`
+                : `todos os ${alvoDoBotao.length}`}
           </strong>
           .
         </Typography>

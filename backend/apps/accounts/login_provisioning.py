@@ -260,16 +260,19 @@ def reset_password(*, organization, player: Player, performed_by=None) -> dict:
         raise DomainError(f"{player.name} ainda não tem login. Gere o acesso primeiro.")
 
     user = player.user
-    # Esta rota é para **jogadores**. Quem administra a organização tem gestão
-    # própria em `/api/auth/members/`, e resetar a senha de um Gerente por aqui
-    # seria um caminho lateral para tomar a conta de quem administra.
-    if Membership.objects.filter(
-        organization=organization, user=user, role__in=("admin", "organizador")
-    ).exists():
-        raise DomainError(
-            f"{player.name} administra esta organização. "
-            "Use a gestão de membros para alterar o acesso dele."
-        )
+    # Gerente também é resetável por aqui, inclusive por outro Gerente.
+    #
+    # Havia um bloqueio para quem administra a organização, com o argumento de
+    # que seria um caminho lateral para tomar a conta de um Gerente. Ele não se
+    # sustentava por dois motivos. Primeiro, `admin` e `organizador` têm poder
+    # idêntico (`MANAGER_ROLES`; `IsOrganizationAdmin` não guarda rota nenhuma),
+    # então entre os dois não há escalada de privilégio a impedir. Segundo, a
+    # mensagem mandava "usar a gestão de membros", e aquela rota **não troca
+    # senha** — o campo `password` só vale na criação. Quem administrava e
+    # esquecia a senha ficava sem saída dentro do sistema.
+    #
+    # O controle que sobra é o certo para o caso: a trilha de auditoria abaixo
+    # registra **quem** resetou a senha de quem.
 
     user.set_password(SENHA_TEMPORARIA_PADRAO)
     user.must_change_password = True

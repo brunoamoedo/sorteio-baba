@@ -256,6 +256,8 @@ Complemento: reabrir uma ocorrência cancelada que já tinha sorteio devolve o s
 ### 6.2 Algoritmo (Simulated Annealing)
 
 #### Restrição obrigatória: os piores jogadores nunca ficam juntos
+> Quando os fracos **sobram** (mais deles que times), a restrição garante um em cada time e o excedente vai para o último — ver o critério 5b em "Critérios de pontuação".
+
 Antes de qualquer critério de pontuação vem uma **restrição**: com N times, os **N jogadores de menor nível vão para times diferentes** — sempre que isso for matematicamente possível. Com 3 times, os 3 piores ocupam um time cada; com 4 times, os 4 piores; e assim por diante.
 
 - **Empate de nível** é tratado por camadas cumulativas (`weakest_tiers`), não escolhendo arbitrariamente "os três primeiros da lista": a primeira camada é o nível mais baixo inteiro, a segunda acrescenta o nível seguinte, e assim até haver gente suficiente para todos os times. Cada camada é cobrada separadamente. Na prática: 4 jogadores ⭐ para 3 times viram 2-1-1 (nunca 3-1-0); 2 jogadores ⭐ e 3 ⭐⭐ para 3 times mantêm os dois ⭐ separados **e** espalham os cinco.
@@ -271,11 +273,12 @@ Respeitada a restrição, o sorteio é uma busca por otimização que minimiza u
 3. **Repetição de parcerias**: cada dupla de jogadores que já jogou junta em sorteios recentes da organização recebe uma penalidade se cair no mesmo time de novo. A "memória" considera os últimos **10 sorteios vigentes** (configurável pela variável de ambiente `DRAW_PAIRING_HISTORY_WINDOW`, lida no setting `DRAW_DEFAULT_PAIRING_HISTORY_WINDOW`), com peso decrescente: o sorteio mais recente pesa mais que os mais antigos da janela.
 4. **Uso de posição secundária**: pequena penalidade quando o algoritmo precisa colocar um jogador na posição secundária em vez da principal para fechar a distribuição.
 5. **Separação dos piores**: o custo da restrição acima. Continua no score (com o peso mais alto de todos) para que a trilha de auditoria registre com que custo o sorteio fechou.
+5b. **Sobra dos piores no último time** (peso 4.0): quando há **mais jogadores fracos que times**, a separação garante um em cada time mas alguém precisa levar dois — e qual time levava era indiferente para o custo, então caía no aleatório. O excedente vai para o **último** time: ele absorve a sobra e os demais ficam parelhos entre si. Sem sobra (fracos ≤ times) o critério devolve zero e não opina. O peso foi medido: com 2.0 a sobra caía no último time em 83% dos sorteios, com 4.0 em 100%; acima disso não melhora e começa a puxar os melhores de volta para o último time.
 6. **Distribuição de convidados**: convidados espalhados entre os times, em vez de concentrados em um só.
 
 Processo de busca: parte de um **draft em serpentina do pior para o melhor jogador** (1-2-3-3-2-1), que já nasce cumprindo a restrição — distribuir em ordem crescente de nível deixa todo prefixo da lista espalhado entre os times — e equilibra as somas pela inversão de sentido a cada rodada. Depois tenta repetidamente trocar dois jogadores entre times (ou alternar alguém para a posição secundária), descartando de saída as trocas que violariam a separação dos piores e aceitando as demais que pioram o score com uma probabilidade decrescente ao longo do tempo (têmpera decrescente — geometricamente, 0.995 por iteração), até um máximo de 20.000 iterações ou 3.000 iterações seguidas sem melhora. A melhor solução já vista é sempre preservada (elitismo), então o resultado nunca piora com mais iterações.
 
-Como só os três critérios originais têm coluna em `Draw`, os custos de separação dos piores e de distribuição de convidados são gravados no payload da auditoria do sorteio (`score_weakest_split`, `score_guest_balance`).
+Como só os três critérios originais têm coluna em `Draw`, os custos de separação dos piores, da sobra dos piores e de distribuição de convidados são gravados no payload da auditoria do sorteio (`score_weakest_split`, `score_weakest_surplus`, `score_guest_balance`).
 
 ### 6.2.1 Prioridade do mensalista
 

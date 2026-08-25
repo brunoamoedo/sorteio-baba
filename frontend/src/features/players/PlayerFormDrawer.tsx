@@ -4,6 +4,7 @@ import { Box, Button, MenuItem, Rating, TextField, Typography } from "@mui/mater
 
 import type { LinkableUser, Player, PlayerFormValues, Position } from "../../core/types/player";
 import { FormDrawer } from "../../shared/components/FormDrawer";
+import { formatPhone, phoneError } from "../../shared/phone";
 
 interface PlayerFormDrawerProps {
   open: boolean;
@@ -36,7 +37,7 @@ function buildDefaultValues(player?: Player | null): PlayerFormValues {
     user: player.user ?? "",
     name: player.name,
     nickname: player.nickname,
-    phone: player.phone,
+    phone: formatPhone(player.phone),
     notes: player.notes,
     player_type: player.player_type,
     status: player.status,
@@ -121,7 +122,28 @@ export function PlayerFormDrawer({
         {...register("name", { required: "Informe o nome" })}
       />
       <TextField label="Apelido" {...register("nickname")} />
-      <TextField label="Telefone" {...register("phone")} />
+      <Controller
+        name="phone"
+        control={control}
+        // Vazio passa: nem toda ficha tem telefone. Preenchido, tem que estar
+        // certo — o número vira o **usuário do login** da pessoa.
+        rules={{ validate: (value) => phoneError(String(value ?? "")) ?? true }}
+        render={({ field }) => (
+          <TextField
+            label="Telefone"
+            placeholder="(11) 91434-4257"
+            error={!!errors.phone}
+            helperText={errors.phone?.message ?? "DDD + 9 + o número. É com ele que a pessoa entra no sistema."}
+            // `inputMode` abre o teclado numérico no celular, que é onde este
+            // cadastro é preenchido de verdade.
+            slotProps={{ htmlInput: { inputMode: "tel" } }}
+            value={field.value}
+            onChange={(event) => field.onChange(formatPhone(event.target.value))}
+            onBlur={field.onBlur}
+            name={field.name}
+          />
+        )}
+      />
       <TextField label="Observações" multiline minRows={2} {...register("notes")} />
 
       <Controller
