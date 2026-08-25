@@ -25,5 +25,12 @@ ENV PATH=/root/.local/bin:$PATH
 
 COPY . .
 
+RUN chmod +x entrypoint.prod.sh
+
 EXPOSE 8000
+# O entrypoint roda migrate e collectstatic antes de entregar o processo ao
+# comando. O worker e o beat do Celery usam a mesma imagem e **passam por
+# aqui também**: são idempotentes, e é o que garante que nenhum deles suba
+# contra um banco sem migrar.
+ENTRYPOINT ["./entrypoint.prod.sh"]
 CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]

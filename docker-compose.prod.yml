@@ -1,0 +1,138 @@
+# Produção. O de desenvolvimento é o `docker-compose.yml` — este não substitui
+# aquele, e os dois nunca rodam juntos na mesma máquina.
+#
+# Desenho: o **Apache do servidor** é a única porta aberta ao mundo. Ele termina
+# o TLS e repassa para os containers, que publicam apenas em `127.0.0.1`. Nada
+# aqui deve ser exposto em `0.0.0.0` — o Postgres e o Redis não têm sequer porta
+# publicada, só a rede interna do compose.
+#
+#   Apache (443)
+#     ├── /            → frontend  (127.0.0.1:8080)  nginx com o SPA
+#     ├── /api, /admin → backend   (127.0.0.1:8000)  gunicorn
+#     └── /media       → ./data/media                servido em disco
+#
+# Subir:   docker compose -f docker-compose.prod.yml up -d --build
+# Ver log: docker compose -f docker-compose.prod.yml logs -f backend
+
+# Nome de projeto próprio. Sem ele, o compose deriva o nome da **pasta** — a
+# mesma dos dois arquivos — e os serviços daqui (`backend`, `postgres`, ...)
+# colidiriam com os do desenvolvimento: um `up` deste arquivo destruiria e
+# recriaria os containers do outro, banco incluído.
+name: sorteiobaba-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # `env_file`, e não `environment: ${POSTGRES_DB}`: aquilo é **interpolação**,
+    # que o compose resolve no ambiente do shell, não neste arquivo. O `.env.prod`
+    # chega ao container por `env_file`, mas não à interpolação — a senha sairia
+    # vazia e o Postgres se recusaria a subir.
+    env_file: .env.prod
+    volumes:
+      # Volume nomeado: sobrevive a `down` e a troca de imagem. Um `down -v`
+      # apaga o banco — é o único comando aqui que destrói dados.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # `$$` escapa a interpolação: quem expande é o shell **dentro** do
+      # container, onde a variável existe. Com um `$` só, o compose trocaria
+      # por vazio aqui e o pg_isready usaria o usuário errado.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # `appendonly`: a fila do Celery sobrevive a um reinício do servidor. Sem
+    # isso, um reboot no meio de um sorteio agendado perde a tarefa em silêncio.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/prod.txt
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      # Só este serviço migra e coleta estáticos — ver `entrypoint.prod.sh`.
+      RUN_MIGRATIONS: "1"
+    volumes:
+      # Bind mount, não volume nomeado: o Apache precisa **ler estes arquivos
+      # em disco** para servir /media sem passar pelo Django.
+      - ./data/media:/app/media
+    ports:
+      # Só no loopback. Publicar em 0.0.0.0 deixaria o gunicorn acessível pela
+      # internet por fora do Apache, sem TLS e sem os cabeçalhos de proxy.
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # O primeiro start roda migrate e collectstatic; sem esta folga o
+      # healthcheck reprovaria o container antes de ele terminar.
+      start_period: 60s
+
+  celery-worker:
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/prod.txt
+    restart: unless-stopped
+    command: celery -A config worker -l info --concurrency 2
+    env_file: .env.prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    volumes:
+      - ./data/media:/app/media
+    depends_on:
+      # Espera o web ficar saudável, ou seja: o banco já migrado. Depender só do
+      # Postgres faria o worker subir contra um esquema velho.
+      backend:
+        condition: service_healthy
+
+  celery-beat:
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/prod.txt
+    restart: unless-stopped
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: .env.prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+      args:
+        # Relativo: o SPA e a API saem do mesmo domínio, então não há CORS a
+        # configurar. Este valor é assado no bundle — mudá-lo exige `--build`.
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+
+volumes:
+  postgres_data:
+  redis_data:

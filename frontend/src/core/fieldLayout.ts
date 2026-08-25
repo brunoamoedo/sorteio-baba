@@ -50,14 +50,35 @@ export interface FieldLayoutOptions {
 }
 
 const TOP_MARGIN = 10;
-const BOTTOM_MARGIN = 84;
-/** Faixa reservada ao goleiro, abaixo da linha mais defensiva. */
-const GOALKEEPER_Y = 93;
+// 78, e não 84: cada jogador ocupa bem mais que o próprio círculo — abaixo
+// dele vêm o nome e as estrelas, ~14 unidades no total. Com a linha mais
+// defensiva em 84% e o goleiro logo abaixo, as estrelas da zaga entravam no
+// crachá do goleiro. Subir a faixa dos jogadores de linha abre esse espaço sem
+// empurrar o goleiro para fora do campo.
+const BOTTOM_MARGIN = 78;
+/** Faixa reservada ao goleiro, abaixo da linha mais defensiva.
+ *
+ * 90, e não 93: abaixo do jogador ainda vêm o nome e as estrelas, e em 93% de
+ * um viewBox de 170 o rodapé do jogador cai em ~173 — **fora** do campo, que
+ * termina em 170. Com `overflow: hidden` no contêiner, as estrelas do goleiro
+ * apareciam cortadas ao meio. Já era assim antes de a fonte crescer (estourava
+ * ~7px); com nomes maiores ficou impossível de ignorar. */
+const GOALKEEPER_Y = 90;
 
 /** Fonte do nome por lotação da linha. Uma linha de 2 pode ser generosa; uma de
- * 5 precisa caber. */
+ * 5 precisa caber.
+ *
+ * O piso é o que decide a legibilidade no celular, e ele estava baixo demais.
+ * Num aparelho de 375px o campo fica com ~341 de largura, ou seja, cada unidade
+ * do viewBox vale ~2,84px: o piso de 2.8 saía como **7,9px na tela**, e as
+ * estrelas embaixo do nome, como 6,5px. Medido no aparelho, era apertar o olho.
+ *
+ * Piso de 3.8 e teto de 5.0 põem o pior caso em ~10,8px e o melhor em ~14,2px.
+ * A folga existe porque o truncamento (`maxCharsFor`) já é quem impede a
+ * sobreposição — encolher a fonte além disso era cinto e suspensório, e o preço
+ * foi pago inteiro pelo celular. */
 export function nameSizeFor(playersInLine: number): number {
-  return Math.max(2.8, Math.min(4.4, 4.4 - 0.35 * (playersInLine - 2)));
+  return Math.max(3.8, Math.min(5, 5 - 0.3 * (playersInLine - 2)));
 }
 
 /** Truncamento por lotação da linha. */

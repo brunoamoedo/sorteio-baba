@@ -27,6 +27,17 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+
+# O Vite **inlineia** as `VITE_*` no bundle: elas valem no build, não na
+# execução. Trocar a URL da API depois exige reconstruir a imagem — não adianta
+# passar `environment:` para o container de produção.
+#
+# O padrão é relativo de propósito. Com o proxy servindo o SPA e a API no mesmo
+# domínio, `/api` dispensa CORS e faz a mesma imagem servir em qualquer
+# endereço. Uma URL absoluta aqui prenderia a imagem a um domínio.
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 RUN npm run build
 
 # ---------------------------------------------------------------------------

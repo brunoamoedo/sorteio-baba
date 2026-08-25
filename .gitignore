@@ -24,3 +24,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Produção — segredos do servidor, nunca versionados.
+.env.prod
+data/
