@@ -15,36 +15,28 @@ internet ──▶ Apache :443
                └── /media       ──▶ ./data/media     fotos, servidas em disco
 ```
 
-## 0. Pré-requisito: Docker Compose v2
+## 0. O comando, e por que ele leva `-p`
 
-Todos os comandos daqui usam **`docker compose`** (com espaço), o plugin v2 —
-não `docker-compose` (com hífen), que é o script Python v1, descontinuado em
-2023. Os dois são programas diferentes e **não** são intercambiáveis.
-
-```bash
-docker compose version
-```
-
-Se o comando não existir, instale o plugin:
+O servidor usa o **`docker-compose` v1** (com hífen, o script Python). Todos os
+comandos deste documento levam `-p sorteiobaba-prod`:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml <comando>
 ```
 
-Se o `apt` não achar o pacote — acontece quando o Docker veio do repositório da
-distribuição em vez do oficial — instale o binário direto:
+O `-p` fixa o nome do projeto. Sem ele o compose deriva o nome da **pasta**, que
+é a mesma do `docker-compose.yml` de desenvolvimento — os serviços têm nomes
+iguais (`backend`, `postgres`, ...) e um `up` daqui destruiria e recriaria os
+containers do outro, banco incluído. Num servidor que só roda produção não há
+com o que colidir, mas o hábito evita a surpresa no dia em que houver.
 
-```bash
-sudo mkdir -p /usr/local/lib/docker/cli-plugins
-sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64   -o /usr/local/lib/docker/cli-plugins/docker-compose
-sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-```
+O `docker-compose.prod.yml` declara `version: "2.4"` por causa do v1, que exige
+a chave. O 2.4 é a versão mais alta do ramo 2.x e cobre `depends_on` com
+`condition: service_healthy`, `start_period` no healthcheck e `target` no build
+— coisas que o ramo 3.x não tem.
 
-Rodar o `docker-compose.prod.yml` com o v1 falha com
-`'name' does not match any of the regexes: '^x-'`, e a mensagem sugere
-(erradamente) que falta uma chave `version:`. Não falta — o arquivo usa três
-coisas que o v1 não tem: a chave `name:` de projeto, `depends_on` com
-`condition: service_healthy` e `start_period` no healthcheck.
+Se um dia você migrar para o plugin v2 (`docker compose`, com espaço), o mesmo
+arquivo funciona: ele só avisa que a chave `version` é obsoleta.
 
 ## 1. Apontar o DNS
 
@@ -74,7 +66,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # senha do banco
 ## 3. Subir os containers
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
 ```
 
 O primeiro build demora alguns minutos. O `entrypoint.prod.sh` roda `migrate` e
@@ -84,7 +76,7 @@ ficar saudável para não subirem contra um banco sem migrar.
 Confira antes de mexer no Apache:
 
 ```bash
-docker compose -f docker-compose.prod.yml ps          # todos "healthy"/"running"
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml ps          # todos "healthy"/"running"
 curl -s localhost:8000/api/health/                    # {"status": "ok"}
 curl -sI localhost:8080 | head -1                     # HTTP/1.1 200 OK
 ```
@@ -128,8 +120,8 @@ certificado subir**.
 O banco de produção nasce vazio. Crie o Super Administrador:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
-docker compose -f docker-compose.prod.yml exec backend python manage.py shell -c \
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py shell -c \
   "from apps.accounts.models import User; User.objects.filter(username='SEU_USUARIO').update(is_superadmin=True, is_superuser=True, is_staff=True)"
 ```
 
@@ -154,7 +146,7 @@ docker compose exec -T backend python manage.py dumpdata \
 No servidor, com os containers já no ar:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T backend \
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend \
   python manage.py loaddata /dev/stdin < dados.json
 ```
 
@@ -166,7 +158,7 @@ servidor à parte (`rsync -av backend/media/ servidor:/opt/sorteio-baba/data/med
 ```bash
 cd /opt/sorteio-baba
 git pull
-docker compose -f docker-compose.prod.yml up -d --build
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
 ```
 
 O `--build` não é opcional: a URL da API é **assada no bundle** do frontend em
@@ -178,7 +170,7 @@ apontando para onde apontava.
 O que importa é o Postgres e as fotos.
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T postgres \
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T postgres \
   pg_dump -U pelada pelada | gzip > backup-$(date +%F).sql.gz
 tar czf media-$(date +%F).tar.gz data/media/
 ```
@@ -199,6 +191,6 @@ não protege do disco morrer.
 | Sorteio automático não acontece | `celery-beat` fora do ar (`logs celery-beat`) |
 
 ```bash
-docker compose -f docker-compose.prod.yml logs -f backend
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml logs -f backend
 sudo tail -f /var/log/apache2/peakyblindersbaba-error.log
 ```
