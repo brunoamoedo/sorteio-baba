@@ -134,7 +134,10 @@ Depois disso, entre no sistema e crie a organização em **Administração**.
 ## Levar os dados de desenvolvimento
 
 Opcional, e só se você quiser começar com o elenco que já está na sua máquina.
-Na máquina de desenvolvimento:
+
+Atenção à troca de comando: este primeiro roda **na sua máquina**, que usa o
+`docker compose` v2 (com espaço) e o compose de desenvolvimento — por isso não
+leva `-p` nem `-f`. O segundo roda no servidor, com o v1.
 
 ```bash
 docker compose exec -T backend python manage.py dumpdata \
