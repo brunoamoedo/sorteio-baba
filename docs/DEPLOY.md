@@ -15,6 +15,29 @@ internet ──▶ Apache :443
                └── /media       ──▶ ./data/media     fotos, servidas em disco
 ```
 
+## 0. O comando, e por que ele leva `-p`
+
+O servidor usa o **`docker-compose` v1** (com hífen, o script Python). Todos os
+comandos deste documento levam `-p sorteiobaba-prod`:
+
+```bash
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml <comando>
+```
+
+O `-p` fixa o nome do projeto. Sem ele o compose deriva o nome da **pasta**, que
+é a mesma do `docker-compose.yml` de desenvolvimento — os serviços têm nomes
+iguais (`backend`, `postgres`, ...) e um `up` daqui destruiria e recriaria os
+containers do outro, banco incluído. Num servidor que só roda produção não há
+com o que colidir, mas o hábito evita a surpresa no dia em que houver.
+
+O `docker-compose.prod.yml` declara `version: "2.4"` por causa do v1, que exige
+a chave. O 2.4 é a versão mais alta do ramo 2.x e cobre `depends_on` com
+`condition: service_healthy`, `start_period` no healthcheck e `target` no build
+— coisas que o ramo 3.x não tem.
+
+Se um dia você migrar para o plugin v2 (`docker compose`, com espaço), o mesmo
+arquivo funciona: ele só avisa que a chave `version` é obsoleta.
+
 ## 1. Apontar o DNS
 
 Um registro `A` de `peakyblindersbaba.datadata.com.br` para o IP do servidor.
@@ -43,7 +66,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # senha do banco
 ## 3. Subir os containers
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
 ```
 
 O primeiro build demora alguns minutos. O `entrypoint.prod.sh` roda `migrate` e
@@ -53,7 +76,7 @@ ficar saudável para não subirem contra um banco sem migrar.
 Confira antes de mexer no Apache:
 
 ```bash
-docker compose -f docker-compose.prod.yml ps          # todos "healthy"/"running"
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml ps          # todos "healthy"/"running"
 curl -s localhost:8000/api/health/                    # {"status": "ok"}
 curl -sI localhost:8080 | head -1                     # HTTP/1.1 200 OK
 ```
@@ -97,8 +120,8 @@ certificado subir**.
 O banco de produção nasce vazio. Crie o Super Administrador:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
-docker compose -f docker-compose.prod.yml exec backend python manage.py shell -c \
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py shell -c \
   "from apps.accounts.models import User; User.objects.filter(username='SEU_USUARIO').update(is_superadmin=True, is_superuser=True, is_staff=True)"
 ```
 
@@ -111,7 +134,10 @@ Depois disso, entre no sistema e crie a organização em **Administração**.
 ## Levar os dados de desenvolvimento
 
 Opcional, e só se você quiser começar com o elenco que já está na sua máquina.
-Na máquina de desenvolvimento:
+
+Atenção à troca de comando: este primeiro roda **na sua máquina**, que usa o
+`docker compose` v2 (com espaço) e o compose de desenvolvimento — por isso não
+leva `-p` nem `-f`. O segundo roda no servidor, com o v1.
 
 ```bash
 docker compose exec -T backend python manage.py dumpdata \
@@ -123,7 +149,7 @@ docker compose exec -T backend python manage.py dumpdata \
 No servidor, com os containers já no ar:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T backend \
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend \
   python manage.py loaddata /dev/stdin < dados.json
 ```
 
@@ -135,19 +161,27 @@ servidor à parte (`rsync -av backend/media/ servidor:/opt/sorteio-baba/data/med
 ```bash
 cd /opt/sorteio-baba
 git pull
-docker compose -f docker-compose.prod.yml up -d --build
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
 ```
 
 O `--build` não é opcional: a URL da API é **assada no bundle** do frontend em
 tempo de build (o Vite inlineia as `VITE_*`), então imagem velha continua
 apontando para onde apontava.
 
+O `git pull` traz o `.env.prod.example`, **nunca** o seu `.env.prod`. Quando o
+exemplo ganhar uma variável nova, o deploy sobe sem ela e o erro aparece longe
+da causa. Vale conferir depois de cada pull:
+
+```bash
+diff <(grep -o '^[A-Z_]*=' .env.prod.example | sort)      <(grep -o '^[A-Z_]*=' .env.prod | sort)
+```
+
 ## Backup
 
 O que importa é o Postgres e as fotos.
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T postgres \
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T postgres \
   pg_dump -U pelada pelada | gzip > backup-$(date +%F).sql.gz
 tar czf media-$(date +%F).tar.gz data/media/
 ```
@@ -166,8 +200,34 @@ não protege do disco morrer.
 | Fotos em 404 | `Alias /media/` apontando para o caminho errado |
 | Tela branca, erro de CORS no console | Imagem do frontend construída com a URL antiga — refaça com `--build` |
 | Sorteio automático não acontece | `celery-beat` fora do ar (`logs celery-beat`) |
+| `Container ... is unhealthy`, worker e beat não sobem | O healthcheck do backend não passa — veja abaixo |
+| `KeyError: 'ContainerConfig'` no `up` | Bug do docker-compose v1 ao recriar container: rode `down` antes do `up` |
+
+### `Container ... is unhealthy`
+
+O worker e o beat dependem de o backend estar saudável, então param os dois
+junto. O healthcheck chama `http://localhost:8000/api/health/` **por dentro**
+do container, direto no gunicorn — sem passar pelo Apache. Duas coisas quebram
+esse caminho, e as duas já estão resolvidas na configuração deste repositório:
+
+- **400 DisallowedHost** — o healthcheck manda `Host: localhost`. O
+  `settings/prod.py` acrescenta `localhost` e `127.0.0.1` ao `ALLOWED_HOSTS`
+  sozinho, justamente para isto não depender do `.env.prod`: o arquivo do
+  servidor é uma cópia do exemplo feita no dia da instalação, e **`git pull`
+  não o atualiza** — foi assim que este defeito voltou depois de "corrigido"
+  só no `.env.prod.example`.
+- **`SSL: WRONG_VERSION_NUMBER`** — sem o `X-Forwarded-Proto` (que só o Apache
+  põe), o Django responde 301 para `https://localhost:8000`, e o gunicorn não
+  fala TLS. Resolvido pelo `SECURE_REDIRECT_EXEMPT` em `settings/prod.py`, que
+  tira **só** `/api/health/` do redirecionamento.
+
+Para ver o que o healthcheck respondeu:
 
 ```bash
-docker compose -f docker-compose.prod.yml logs -f backend
+docker inspect -f '{{range .State.Health.Log}}{{.ExitCode}} {{.Output}}{{println}}{{end}}'   sorteiobaba-prod_backend_1 | tail -3
+```
+
+```bash
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml logs -f backend
 sudo tail -f /var/log/apache2/peakyblindersbaba-error.log
 ```

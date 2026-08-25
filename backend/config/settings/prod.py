@@ -7,6 +7,20 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
+# `localhost` e `127.0.0.1` entram sempre, venham ou nao do `.env.prod`: o
+# healthcheck do container chama `http://localhost:8000/api/health/` por dentro,
+# e sem eles o Django responde 400 DisallowedHost. O container fica `unhealthy`
+# para sempre e o worker e o beat do Celery nem sobem, porque dependem dele.
+#
+# Garantir aqui, e nao so no `.env.prod.example`: o `.env.prod` do servidor e
+# uma copia feita no dia da instalacao, e nenhum `git pull` a atualiza — foi por
+# isso que este defeito voltou depois de "corrigido" no exemplo.
+#
+# Os dois so sao alcancaveis de dentro da maquina (o Apache e a unica porta
+# aberta, e os containers publicam so em 127.0.0.1), entao nao ampliam a
+# superficie.
+ALLOWED_HOSTS += [h for h in ("localhost", "127.0.0.1") if h not in ALLOWED_HOSTS]
+
 DATABASES = {
     "default": env.db("DATABASE_URL"),
 }
@@ -27,6 +41,19 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
 
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
+
+# O healthcheck do container fica de fora do redirecionamento para https.
+#
+# Ele chama `http://localhost:8000/api/health/` **por dentro**, direto no
+# gunicorn, sem passar pelo Apache — logo sem o `X-Forwarded-Proto`. Sem esta
+# isencao o Django responde 301 para `https://localhost:8000/...`, o cliente
+# segue o redirecionamento, e o gunicorn (que nao fala TLS) devolve
+# `SSL: WRONG_VERSION_NUMBER`. O healthcheck nunca fica verde, o container
+# aparece como `unhealthy` e o worker e o beat do Celery se recusam a subir,
+# porque dependem dele estar saudavel.
+#
+# A regex casa contra `request.path` sem a barra inicial.
+SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7
