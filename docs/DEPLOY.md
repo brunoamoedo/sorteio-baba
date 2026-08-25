@@ -143,8 +143,20 @@ leva `-p` nem `-f`. O segundo roda no servidor, com o v1.
 docker compose exec -T backend python manage.py dumpdata \
   --natural-foreign --natural-primary \
   -e contenttypes -e auth.permission -e sessions -e admin.logentry \
+  -e django_celery_beat \
   --indent 2 > dados.json
 ```
+
+O `-e django_celery_beat` não é detalhe: as tarefas agendadas são criadas no
+servidor pelas **próprias migrations** (`draws`, `matches` e `finance`, cada uma
+com a sua `0002_periodic_task.py`). Trazer as do desenvolvimento junto colide
+com elas — `PeriodicTask.name` é único, e basta as chaves primárias não baterem
+entre os dois bancos para o `loaddata` parar com `IntegrityError` no meio. Sem
+elas o sorteio automático funciona igual: quem cria é a migration.
+
+O `dados.json` sai na raiz do repositório e leva telefones, o financeiro e os
+hashes de senha de todo mundo — está no `.gitignore` de propósito. Apague depois
+de importar.
 
 No servidor, com os containers já no ar:
 
@@ -152,6 +164,20 @@ No servidor, com os containers já no ar:
 docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend \
   python manage.py loaddata /dev/stdin < dados.json
 ```
+
+O `loaddata` é transacional: se algo colidir ele para sem gravar nada, e você
+não fica com meio banco importado.
+
+O banco precisa estar **recém-migrado e vazio** — se você já criou o
+superusuário e a organização da seção 6, as chaves colidem. Confira antes:
+
+```bash
+docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend python manage.py shell -c "from apps.accounts.models import User, Organization; print(User.objects.count(), Organization.objects.count())"
+```
+
+Os usuários vão no dump **com as senhas**: depois de importar você entra com o
+mesmo login do desenvolvimento, e a seção 6 fica desnecessária. Por isso a ordem
+é importar primeiro e criar usuário só se faltar.
 
 As **fotos** não vão no dump: copie `backend/media/` para `data/media/` no
 servidor à parte (`rsync -av backend/media/ servidor:/opt/sorteio-baba/data/media/`).
