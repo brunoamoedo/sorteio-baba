@@ -7,6 +7,20 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
+# `localhost` e `127.0.0.1` entram sempre, venham ou nao do `.env.prod`: o
+# healthcheck do container chama `http://localhost:8000/api/health/` por dentro,
+# e sem eles o Django responde 400 DisallowedHost. O container fica `unhealthy`
+# para sempre e o worker e o beat do Celery nem sobem, porque dependem dele.
+#
+# Garantir aqui, e nao so no `.env.prod.example`: o `.env.prod` do servidor e
+# uma copia feita no dia da instalacao, e nenhum `git pull` a atualiza — foi por
+# isso que este defeito voltou depois de "corrigido" no exemplo.
+#
+# Os dois so sao alcancaveis de dentro da maquina (o Apache e a unica porta
+# aberta, e os containers publicam so em 127.0.0.1), entao nao ampliam a
+# superficie.
+ALLOWED_HOSTS += [h for h in ("localhost", "127.0.0.1") if h not in ALLOWED_HOSTS]
+
 DATABASES = {
     "default": env.db("DATABASE_URL"),
 }

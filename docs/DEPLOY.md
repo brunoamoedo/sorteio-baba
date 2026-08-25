@@ -168,6 +168,14 @@ O `--build` não é opcional: a URL da API é **assada no bundle** do frontend e
 tempo de build (o Vite inlineia as `VITE_*`), então imagem velha continua
 apontando para onde apontava.
 
+O `git pull` traz o `.env.prod.example`, **nunca** o seu `.env.prod`. Quando o
+exemplo ganhar uma variável nova, o deploy sobe sem ela e o erro aparece longe
+da causa. Vale conferir depois de cada pull:
+
+```bash
+diff <(grep -o '^[A-Z_]*=' .env.prod.example | sort)      <(grep -o '^[A-Z_]*=' .env.prod | sort)
+```
+
 ## Backup
 
 O que importa é o Postgres e as fotos.
@@ -202,8 +210,12 @@ junto. O healthcheck chama `http://localhost:8000/api/health/` **por dentro**
 do container, direto no gunicorn — sem passar pelo Apache. Duas coisas quebram
 esse caminho, e as duas já estão resolvidas na configuração deste repositório:
 
-- **400 DisallowedHost** — o `DJANGO_ALLOWED_HOSTS` precisa incluir `localhost`
-  e `127.0.0.1` além do domínio.
+- **400 DisallowedHost** — o healthcheck manda `Host: localhost`. O
+  `settings/prod.py` acrescenta `localhost` e `127.0.0.1` ao `ALLOWED_HOSTS`
+  sozinho, justamente para isto não depender do `.env.prod`: o arquivo do
+  servidor é uma cópia do exemplo feita no dia da instalação, e **`git pull`
+  não o atualiza** — foi assim que este defeito voltou depois de "corrigido"
+  só no `.env.prod.example`.
 - **`SSL: WRONG_VERSION_NUMBER`** — sem o `X-Forwarded-Proto` (que só o Apache
   põe), o Django responde 301 para `https://localhost:8000`, e o gunicorn não
   fala TLS. Resolvido pelo `SECURE_REDIRECT_EXEMPT` em `settings/prod.py`, que
