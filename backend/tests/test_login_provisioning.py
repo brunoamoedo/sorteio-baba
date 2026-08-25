@@ -30,7 +30,7 @@ from apps.accounts.models import Membership, User
 from apps.audit.models import AuditLog
 from apps.players.models import Player
 from common.exceptions import DomainError
-from common.permissions import ROLE_JOGADOR, ROLE_ORGANIZADOR
+from common.permissions import ROLE_ADMIN, ROLE_JOGADOR, ROLE_ORGANIZADOR
 
 from .factories import MembershipFactory, PlayerFactory, PositionFactory, UserFactory
 
@@ -550,15 +550,37 @@ def test_reset_nao_alcanca_ficha_de_outra_organizacao(pelada):
 
 
 @pytest.mark.django_db
-def test_reset_nao_alcanca_quem_administra(pelada):
-    """Seria um caminho lateral para tomar a conta de um Gerente."""
-    org, gestor = pelada
-    outro_gestor = UserFactory(username="gerente2")
-    MembershipFactory(user=outro_gestor, organization=org, role=ROLE_ORGANIZADOR)
-    ficha = mensalista(org, "Gerente", "11944444444", user=outro_gestor)
+@pytest.mark.parametrize("papel_de_quem_reseta", [ROLE_ADMIN, ROLE_ORGANIZADOR])
+@pytest.mark.parametrize("papel_do_alvo", [ROLE_ADMIN, ROLE_ORGANIZADOR])
+def test_reset_alcanca_quem_administra(pelada, papel_de_quem_reseta, papel_do_alvo):
+    """Gerente e Administrador resetam a senha um do outro.
 
-    with pytest.raises(DomainError, match="administra esta organização"):
-        reset_password(organization=org, player=ficha, performed_by=gestor)
+    Havia um bloqueio aqui, com o argumento de que seria um caminho lateral
+    para tomar a conta de quem administra. Mas os dois papéis têm poder
+    idêntico (`MANAGER_ROLES`), então não há privilégio a escalar — e a
+    mensagem mandava usar a gestão de membros, que **não troca senha**. Quem
+    administrava e esquecia a senha ficava sem saída.
+    """
+    org, _ = pelada
+    quem_reseta = UserFactory(username="quem-reseta")
+    Membership.objects.update_or_create(
+        user=quem_reseta, organization=org, defaults={"role": papel_de_quem_reseta}
+    )
+    alvo = UserFactory(username="alvo")
+    MembershipFactory(user=alvo, organization=org, role=papel_do_alvo)
+    ficha = mensalista(org, "Gerente", "11944444444", user=alvo)
+
+    resultado = reset_password(organization=org, player=ficha, performed_by=quem_reseta)
+
+    alvo.refresh_from_db()
+    assert resultado["player_id"] == ficha.id
+    assert alvo.check_password(SENHA_TEMPORARIA_PADRAO)
+    assert alvo.must_change_password is True
+    # A trilha é o controle que sobrou no lugar do bloqueio: precisa dizer
+    # **quem** resetou a senha de quem.
+    log = AuditLog.objects.filter(action=AuditLog.Action.PASSWORD_RESET).latest("id")
+    assert log.user_id == quem_reseta.id
+    assert log.player_id == ficha.id
 
 
 @pytest.mark.django_db

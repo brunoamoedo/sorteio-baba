@@ -200,3 +200,38 @@ def test_bulk_action_rejects_unknown_action_and_empty_selection():
         "/api/players/bulk/", {"ids": [player.id], "action": "explodir"}, format="json"
     ).status_code == 400
     assert client.post("/api/players/bulk/", {"ids": [], "action": "inativo"}, format="json").status_code == 400
+
+
+@pytest.mark.django_db
+def test_telefone_precisa_ser_celular_com_o_9():
+    """A regra vale na API, não só na máscara da tela.
+
+    O telefone vira o **usuário do login** da pessoa; um fixo de 10 dígitos
+    gerava um acesso que ela digitava errado na primeira tentativa.
+    """
+    org = OrganizationFactory()
+    membership = MembershipFactory(organization=org, role=ROLE_ORGANIZADOR)
+    position = PositionFactory(organization=org)
+    client = authenticated_client(membership.user, organization=org)
+
+    def criar(phone):
+        return client.post(
+            "/api/players/",
+            {
+                "name": "Fulano",
+                "phone": phone,
+                "player_type": "mensalista",
+                "status": "ativo",
+                "skill_level": 3,
+                "primary_position": position.id,
+            },
+            format="json",
+        )
+
+    assert criar("7781024129").status_code == 400  # fixo, 10 dígitos
+    assert criar("(11) 8143-44257").status_code == 400  # 11 dígitos, sem o 9
+    assert criar("(11) 9143").status_code == 400  # incompleto
+
+    # Vazio continua valendo: nem toda ficha tem telefone.
+    assert criar("").status_code == 201
+    assert criar("(11) 91434-4257").status_code == 201

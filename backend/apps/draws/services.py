@@ -375,6 +375,7 @@ def execute_draw(
             # registrados aqui — a trilha prova que a restrição foi avaliada e
             # com que custo, sem precisar de colunas novas.
             "score_weakest_split": solution.score.weakest_split,
+            "score_weakest_surplus": solution.score.weakest_surplus,
             "score_guest_balance": solution.score.guest_balance,
         },
     )

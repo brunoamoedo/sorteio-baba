@@ -26,6 +26,34 @@ def normalize_phone(value: str | None) -> str:
     return digits
 
 
+#: Um celular brasileiro: DDD (2) + o 9 + 8 dígitos.
+PHONE_DIGITS_EXPECTED = 11
+
+
+def phone_error(value: str | None) -> str | None:
+    """`None` quando o telefone está no formato aceito; a mensagem quando não.
+
+    Fixo não passa. Aqui o telefone não é contato qualquer: os dígitos viram o
+    **usuário do login** (`login_provisioning.generate_login`), e um número de
+    10 dígitos gerava um acesso que a pessoa digitava errado na primeira
+    tentativa — ela informa o próprio celular, com o 9.
+
+    Vazio passa: nem toda ficha tem telefone (convidado avulso, quem não passou
+    o número), e exigir um impediria de cadastrar quem joga. A regra é "se
+    preencheu, preencheu certo".
+    """
+    digits = normalize_phone(value)
+    if not digits:
+        return None
+    if len(digits) != PHONE_DIGITS_EXPECTED:
+        return (
+            f"O telefone precisa ter {PHONE_DIGITS_EXPECTED} dígitos: DDD + 9 + o número."
+        )
+    if digits[2] != "9":
+        return "Depois do DDD, o número precisa começar com 9 (celular)."
+    return None
+
+
 class Position(OrganizationOwnedModel):
     code = models.CharField(max_length=10)
     name = models.CharField(max_length=50)

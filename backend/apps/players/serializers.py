@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.accounts.models import User
 
-from .models import Player, Position
+from .models import Player, Position, phone_error
 
 
 class PositionSerializer(serializers.ModelSerializer):
@@ -61,6 +61,17 @@ class PlayerSerializer(serializers.ModelSerializer):
             self.fields["user"].queryset = User.objects.filter(
                 memberships__organization=organization, memberships__is_active=True
             ).distinct()
+
+    def validate_phone(self, value):
+        """A regra vale no servidor, não só no formulário.
+
+        A máscara da tela evita o erro; esta validação é o que **garante** o
+        formato — a API é a fronteira, e ela também recebe importação de lista
+        e chamadas que não passam pela tela."""
+        erro = phone_error(value)
+        if erro:
+            raise serializers.ValidationError(erro)
+        return value
 
     def validate_user(self, value):
         """Um login tem no máximo **uma** ficha por organização.
