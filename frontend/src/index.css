@@ -1,0 +1,39 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* O "puxão" de recarregar da página inteira atrapalha as listas roláveis e o
+     arrasto de jogadores no campo. */
+  overscroll-behavior-y: contain;
+  /* O flash cinza do Android em cada toque destoa dos estados do MUI, que já
+     têm ripple próprio. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Informa ao navegador que a aplicação tem os dois temas — é o que faz os
+   controles nativos (scrollbar, campos de data/hora) acompanharem o modo. */
+:root {
+  color-scheme: light dark;
+}
+
+/* Espaço da faixa do sistema (iPhone com notch) para barras fixas no rodapé. */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Quem prefere menos movimento não recebe animação nenhuma — vale para as
+   transições do MUI e para a animação de embaralhamento do sorteio. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

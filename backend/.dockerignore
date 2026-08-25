@@ -1,0 +1,39 @@
+# Contexto de build do backend.
+#
+# Sem este arquivo, `docker build` envia a pasta inteira para o daemon — e ela
+# inclui o `.venv` (166 MB, ~12 mil arquivos) do desenvolvimento local, que a
+# imagem não usa para nada: as dependências dela são instaladas pelo
+# `pip install` do próprio Dockerfile.
+#
+# O custo é pago **três vezes** por build: `backend`, `celery-worker` e
+# `celery-beat` constroem o mesmo contexto, cada um com seu envio.
+
+# Ambiente virtual local — a imagem instala o dela.
+.venv/
+venv/
+
+# Bytecode e caches de ferramenta.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Banco de desenvolvimento. Não é só peso: copiar isto para a imagem levaria
+# junto os dados locais.
+db.sqlite3
+*.sqlite3
+
+# Segredos. O compose lê o `.env` do host (`env_file`), então nada aqui depende
+# de ele estar dentro da imagem — e o que está numa camada de imagem viaja com
+# ela para qualquer registry.
+.env
+
+# Estáticos coletados: `collectstatic` roda no deploy.
+staticfiles/
+
+# Controle de versão e editor.
+.git/
+.gitignore
+.idea/
+.vscode/

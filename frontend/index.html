@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- `viewport-fit=cover` é o que faz `env(safe-area-inset-*)` valer alguma
+         coisa em iPhone com notch — sem ele a barra de navegação inferior fica
+         embaixo da faixa do sistema. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Sem isto a barra do navegador do celular fica branca no tema escuro. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7f9" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1115" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Sorteio da Pelada — gestão de peladas e sorteio inteligente de times equilibrados." />
+    <!-- Instalável na tela de início. O app **não** funciona offline de
+         propósito: os dados são do servidor e nada de negócio é guardado no
+         aparelho. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Pelada" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>Sorteio da Pelada</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
