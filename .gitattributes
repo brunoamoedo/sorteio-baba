@@ -1,0 +1,14 @@
+# Quebra de linha.
+#
+# O Windows converte para CRLF no checkout, e um script de shell com CRLF
+# **não roda no Linux**: o kernel lê o shebang como `/bin/sh\r`, que não
+# existe, e o erro é "no such file or directory" apontando para um arquivo que
+# está claramente ali. Dentro de um container isso vira um deploy que falha
+# sem explicar por quê.
+#
+# Estes arquivos são lidos por Linux (container e servidor), então são sempre
+# LF, independentemente de quem fez o checkout.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.conf          text eol=lf
+docker-compose*.yml text eol=lf
