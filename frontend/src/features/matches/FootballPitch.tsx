@@ -95,12 +95,27 @@ export function FootballPitch({
     <Box
       sx={{
         position: "relative",
-        width: "100%",
-        // Fluido no celular; teto só onde a tela é larga o bastante para o
-        // campo competir com o resto do card.
-        maxWidth: { xs: "100%", md: 320 },
-        mx: "auto",
-        borderRadius: 1,
+        // Três faixas, e cada uma por um motivo diferente.
+        //
+        // **Celular** (`xs`): o campo sangra até a borda do card, anulando os
+        // 16px de padding do `CardContent` de cada lado. São 32px — mais de 10%
+        // da largura útil de um aparelho de 375px, e cada pixel aqui vira
+        // tamanho de nome: o campo vai de 309 para 341, e a fonte junto.
+        //
+        // **Tablet** (`sm`): teto de 420. Sem ele, um tablet de 768px — que
+        // ainda empilha os times em coluna — desenharia um campo de 768×1088,
+        // um time por tela inteira. Um campo grande demais não fica melhor, só
+        // fica longe.
+        //
+        // **Desktop** (`md`): 320, porque aí os times ficam lado a lado e o
+        // card já é estreito por outros motivos.
+        width: { xs: "calc(100% + 32px)", sm: "100%" },
+        maxWidth: { xs: "none", sm: 420, md: 320 },
+        ml: { xs: -2, sm: "auto" },
+        mr: { xs: -2, sm: "auto" },
+        // Sangrando até a borda, o canto arredondado sobraria para fora do
+        // card e apareceria cortado.
+        borderRadius: { xs: 0, sm: 1 },
         overflow: "hidden",
         outline: isOver && !readOnly ? "3px solid" : "none",
         outlineColor: "primary.main",

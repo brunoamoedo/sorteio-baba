@@ -151,17 +151,57 @@ describe("computeFieldLayout", () => {
       expect(nameSizeFor(4)).toBeGreaterThan(nameSizeFor(6));
     });
 
-    it("a fonte nunca fica pequena demais para ler", () => {
-      // 2,8 unidades num viewBox de 170 de altura, num campo de ~340px de
-      // largura no celular, dá ~11px efetivos — o piso do legível.
+    it("a fonte nunca fica pequena demais para ler no celular", () => {
+      // A conta que este teste guardava estava errada: dizia que 2,8 unidades
+      // davam "~11px efetivos". **Medido no navegador a 375px**, davam 7,9px —
+      // e as estrelas, 6,5px. Abaixo de 10px já é apertar o olho.
+      //
+      // O número real: o campo ocupa 341px de largura num aparelho de 375, e o
+      // viewBox tem 120 de largura, logo cada unidade vale 341/120 = 2,84px. O
+      // piso de legibilidade em 10px pede 10 / 2,84 = 3,52 unidades.
+      const ESCALA_NO_CELULAR = 341 / 120;
+      const MINIMO_LEGIVEL_PX = 10;
+
       for (let count = 2; count <= 8; count += 1) {
-        expect(nameSizeFor(count)).toBeGreaterThanOrEqual(2.8);
+        const px = nameSizeFor(count) * ESCALA_NO_CELULAR;
+        expect(px).toBeGreaterThanOrEqual(MINIMO_LEGIVEL_PX);
+      }
+    });
+
+    it("as estrelas, que são menores que o nome, também sobrevivem", () => {
+      // `PlayerToken` desenha as estrelas a 75% do tamanho do nome. Era esse o
+      // texto realmente ilegível: 6,5px no pior caso.
+      const ESCALA_NO_CELULAR = 341 / 120;
+      const PROPORCAO_DAS_ESTRELAS = 0.75;
+
+      for (let count = 2; count <= 8; count += 1) {
+        const px = nameSizeFor(count) * PROPORCAO_DAS_ESTRELAS * ESCALA_NO_CELULAR;
+        expect(px).toBeGreaterThanOrEqual(8);
       }
     });
 
     it("o truncamento acompanha a lotação", () => {
       expect(maxCharsFor(2)).toBeGreaterThan(maxCharsFor(4));
       expect(maxCharsFor(6)).toBeGreaterThanOrEqual(7);
+    });
+
+    it("o goleiro cabe dentro do campo, com nome e estrelas", () => {
+      // Abaixo do círculo do jogador ainda vêm o nome e as estrelas — cerca de
+      // 14 unidades no total (`PlayerToken`: nome em `raio + 4,2`, estrelas em
+      // `raio + 8`, mais o raio e a descida das letras). Com o goleiro em 93%
+      // de um viewBox de 170, o rodapé caía em ~173 e as estrelas apareciam
+      // cortadas pela borda do campo.
+      const VIEWBOX_ALTURA = 170;
+      const ESPACO_ABAIXO_DO_CENTRO = 14.5;
+
+      const layout = computeFieldLayout(makePlayers(1, 0), {
+        lines: [1],
+        hasGoalkeeperLine: true,
+      });
+      const goleiro = layout[0];
+      const rodape = (goleiro.y / 100) * VIEWBOX_ALTURA + ESPACO_ABAIXO_DO_CENTRO;
+
+      expect(rodape).toBeLessThanOrEqual(VIEWBOX_ALTURA);
     });
 
     it("linhas cheias recebem deslocamento vertical alternado", () => {
