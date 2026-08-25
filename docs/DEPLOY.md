@@ -15,6 +15,37 @@ internet ──▶ Apache :443
                └── /media       ──▶ ./data/media     fotos, servidas em disco
 ```
 
+## 0. Pré-requisito: Docker Compose v2
+
+Todos os comandos daqui usam **`docker compose`** (com espaço), o plugin v2 —
+não `docker-compose` (com hífen), que é o script Python v1, descontinuado em
+2023. Os dois são programas diferentes e **não** são intercambiáveis.
+
+```bash
+docker compose version
+```
+
+Se o comando não existir, instale o plugin:
+
+```bash
+sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+```
+
+Se o `apt` não achar o pacote — acontece quando o Docker veio do repositório da
+distribuição em vez do oficial — instale o binário direto:
+
+```bash
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64   -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+```
+
+Rodar o `docker-compose.prod.yml` com o v1 falha com
+`'name' does not match any of the regexes: '^x-'`, e a mensagem sugere
+(erradamente) que falta uma chave `version:`. Não falta — o arquivo usa três
+coisas que o v1 não tem: a chave `name:` de projeto, `depends_on` com
+`condition: service_healthy` e `start_period` no healthcheck.
+
 ## 1. Apontar o DNS
 
 Um registro `A` de `peakyblindersbaba.datadata.com.br` para o IP do servidor.
