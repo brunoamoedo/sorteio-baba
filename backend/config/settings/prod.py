@@ -27,6 +27,19 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
 
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
+
+# O healthcheck do container fica de fora do redirecionamento para https.
+#
+# Ele chama `http://localhost:8000/api/health/` **por dentro**, direto no
+# gunicorn, sem passar pelo Apache — logo sem o `X-Forwarded-Proto`. Sem esta
+# isencao o Django responde 301 para `https://localhost:8000/...`, o cliente
+# segue o redirecionamento, e o gunicorn (que nao fala TLS) devolve
+# `SSL: WRONG_VERSION_NUMBER`. O healthcheck nunca fica verde, o container
+# aparece como `unhealthy` e o worker e o beat do Celery se recusam a subir,
+# porque dependem dele estar saudavel.
+#
+# A regex casa contra `request.path` sem a barra inicial.
+SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7

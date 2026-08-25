@@ -192,6 +192,28 @@ não protege do disco morrer.
 | Fotos em 404 | `Alias /media/` apontando para o caminho errado |
 | Tela branca, erro de CORS no console | Imagem do frontend construída com a URL antiga — refaça com `--build` |
 | Sorteio automático não acontece | `celery-beat` fora do ar (`logs celery-beat`) |
+| `Container ... is unhealthy`, worker e beat não sobem | O healthcheck do backend não passa — veja abaixo |
+| `KeyError: 'ContainerConfig'` no `up` | Bug do docker-compose v1 ao recriar container: rode `down` antes do `up` |
+
+### `Container ... is unhealthy`
+
+O worker e o beat dependem de o backend estar saudável, então param os dois
+junto. O healthcheck chama `http://localhost:8000/api/health/` **por dentro**
+do container, direto no gunicorn — sem passar pelo Apache. Duas coisas quebram
+esse caminho, e as duas já estão resolvidas na configuração deste repositório:
+
+- **400 DisallowedHost** — o `DJANGO_ALLOWED_HOSTS` precisa incluir `localhost`
+  e `127.0.0.1` além do domínio.
+- **`SSL: WRONG_VERSION_NUMBER`** — sem o `X-Forwarded-Proto` (que só o Apache
+  põe), o Django responde 301 para `https://localhost:8000`, e o gunicorn não
+  fala TLS. Resolvido pelo `SECURE_REDIRECT_EXEMPT` em `settings/prod.py`, que
+  tira **só** `/api/health/` do redirecionamento.
+
+Para ver o que o healthcheck respondeu:
+
+```bash
+docker inspect -f '{{range .State.Health.Log}}{{.ExitCode}} {{.Output}}{{println}}{{end}}'   sorteiobaba-prod_backend_1 | tail -3
+```
 
 ```bash
 docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml logs -f backend
