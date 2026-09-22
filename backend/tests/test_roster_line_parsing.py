@@ -298,3 +298,161 @@ def test_declined_mensalista_is_still_available_for_recognition():
 
     assert results[0]["resolution"] == "mensalista"
     assert results[0]["player_id"] == barba.id
+
+
+# ---------------------------------------------------------------------------
+# Nenhuma linha some
+# ---------------------------------------------------------------------------
+
+# A lista de 24 nomes que expôs o bug: o organizador colou 24, o sistema
+# confirmou 23. "Leo David" levou o mensalista "Leonardo David" (0.77) e, logo
+# depois, "Deyvid" pontuava 0.73 contra o **mesmo** mensalista já confirmado —
+# acima do limiar de reconhecimento. A linha era classificada como repetição,
+# não confirmava ninguém, e o Deyvid de verdade ficava fora da partida.
+LISTA_DE_24 = """1- Elsha
+2- Busquets
+3- Leo David
+4- Maradona
+5- Firmino
+6- Almada
+7- Ruach.s
+8- Barba
+9- ASTRO
+10- Bruno
+11- Macena
+12- Digs
+13- Sacra
+14- Teixeira ♟️(Sacra) PAGO
+15- Deyvid ♟️(Elsha) PAGO
+16- Gil ♟️(Ruach)
+17- Diego
+18- Weslley
+19- Santiago (original)
+20- Matheus capy
+21- Freitas
+22- Robinho ♟️(Elsha) PAGO
+23- Luan Ferrão ♟️(Elsha)
+24- Jackson"""
+
+
+@pytest.mark.django_db
+def test_list_of_24_confirms_24():
+    """A lista colada tem 24 nomes; a partida tem de ficar com 24 confirmados."""
+    org = OrganizationFactory()
+    _mensalistas(
+        org,
+        [
+            "Tassio",
+            "João Busquets",
+            "Leonardo David",
+            "Felipe",
+            "Almada",
+            "Barba",
+            "Astro",
+            "Bruno",
+            "João Macena",
+            "Digs",
+            "Sacra Rifas",
+            "Teixeira",
+            "Diego",
+            "Weslley",
+            "Freitas",
+            "Jackson",
+        ],
+    )
+    Player.objects.filter(organization=org, name="Tassio").update(nickname="Elsha")
+    Player.objects.filter(organization=org, name="Felipe").update(nickname="Firmino")
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+
+    raw_names = LISTA_DE_24.split("\n")
+    results = quick_confirm_names(match=match, raw_names=raw_names)
+
+    # Uma linha lida, uma linha relatada: a conferência fecha com o campo.
+    assert len(results) == len(raw_names) == 24
+    assert (
+        Confirmation.objects.filter(match=match, status=Confirmation.Status.CONFIRMED).count() == 24
+    )
+
+    by_line = {item["input_name"]: item for item in results}
+    # A linha do bug: parecida com o mensalista que "Leo David" levou, mas outra
+    # pessoa — entra como convidado, em vez de sumir.
+    assert by_line["15- Deyvid ♟️(Elsha) PAGO"]["resolution"] == "convidado_criado"
+    assert by_line["3- Leo David"]["resolution"] == "mensalista"
+    assert by_line["3- Leo David"]["player_name"] == "Leonardo David"
+    assert Player.objects.filter(organization=org, name__iexact="Deyvid").exists()
+
+
+@pytest.mark.django_db
+def test_similar_but_different_name_is_not_swallowed_as_a_repeat():
+    """O caso mínimo do bug, sem a lista inteira."""
+    org = OrganizationFactory()
+    _mensalistas(org, ["Leonardo David"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+
+    results = quick_confirm_names(match=match, raw_names=["Leo David", "Deyvid"])
+
+    assert results[0]["resolution"] == "mensalista"
+    assert results[1]["resolution"] == "convidado_criado"
+    assert results[1]["player_name"] == "Deyvid"
+    assert (
+        Confirmation.objects.filter(match=match, status=Confirmation.Status.CONFIRMED).count() == 2
+    )
+
+
+@pytest.mark.django_db
+def test_repasting_a_fuzzy_match_does_not_create_a_homonym_guest():
+    """A exigência maior para repetição vale **dentro** da lista colada. Quem já
+    estava confirmado antes da chamada continua com a tolerância normal, senão
+    recolar a lista criaria um convidado "Leo David" ao lado do mensalista
+    "Leonardo David" que a primeira colagem reconheceu."""
+    org = OrganizationFactory()
+    _mensalistas(org, ["Leonardo David"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+    quick_confirm_names(match=match, raw_names=["Leo David"])
+
+    results = quick_confirm_names(match=match, raw_names=["Leo David"])
+
+    assert results[0]["resolution"] == "ja_confirmado"
+    assert not Player.objects.filter(
+        organization=org, player_type=Player.PlayerType.CONVIDADO, name__iexact="Leo David"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_line_without_a_name_is_reported_instead_of_dropped():
+    """Uma linha com texto mas sem nome (só numeração, só emoji, só anotação)
+    vira `linha_invalida`. Descartar em silêncio era a outra forma de a lista
+    entrar na partida com menos gente do que o organizador contou."""
+    org = OrganizationFactory()
+    _mensalistas(org, ["Barba"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+
+    raw_names = ["1- Barba", "2-", "PAGO", "🏆"]
+    results = quick_confirm_names(match=match, raw_names=raw_names)
+
+    assert len(results) == len(raw_names)
+    assert [item["resolution"] for item in results] == [
+        "mensalista",
+        "linha_invalida",
+        # "PAGO" sozinho continua sendo tratado como texto (o parser preserva a
+        # linha quando a anotação é tudo o que há) e vira um convidado visível.
+        "convidado_criado",
+        "linha_invalida",
+    ]
+    assert all(
+        item["player_id"] is None
+        for item in results
+        if item["resolution"] == "linha_invalida"
+    )
+
+
+@pytest.mark.django_db
+def test_blank_lines_are_not_reported():
+    """Linha em branco não é linha: não há o que o organizador confira nela."""
+    org = OrganizationFactory()
+    _mensalistas(org, ["Barba"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+
+    results = quick_confirm_names(match=match, raw_names=["Barba", "", "   "])
+
+    assert len(results) == 1

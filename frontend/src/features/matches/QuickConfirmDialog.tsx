@@ -96,8 +96,9 @@ export function QuickConfirmDialog({ open, matchId, onClose }: QuickConfirmDialo
   );
 
   /**
-   * Resolve uma linha `ja_confirmado`: o organizador diz quem era de verdade e
-   * essa pessoa é confirmada.
+   * Resolve uma linha que não confirmou ninguém (`ja_confirmado` ou
+   * `linha_invalida`): o organizador diz quem era de verdade e essa pessoa é
+   * confirmada.
    *
    * Não é uma "correção" (`reassignConfirmation`) porque não há nada errado
    * para desfazer — a linha não confirmou ninguém. É só a confirmação que
@@ -178,9 +179,9 @@ export function QuickConfirmDialog({ open, matchId, onClose }: QuickConfirmDialo
               isLoadingOptions={mensalistasQuery.isLoading || rosterQuery.isLoading}
               isFixing={reassignMutation.isPending || confirmInsteadMutation.isPending}
               onFix={(row, player) => {
-                // A linha `ja_confirmado` não confirmou ninguém: não há o que
-                // desfazer, só o que confirmar.
-                if (row.resolution === "ja_confirmado") {
+                // Estas linhas não confirmaram ninguém: não há o que desfazer,
+                // só o que confirmar.
+                if (row.resolution === "ja_confirmado" || row.resolution === "linha_invalida") {
                   confirmInsteadMutation.mutate({ rowId: row.rowId, correctPlayer: player });
                 } else {
                   reassignMutation.mutate({ rowId: row.rowId, correctPlayer: player });

@@ -148,14 +148,27 @@ export interface QuickConfirmResolution {
   parsed_name: string;
   /**
    * - `fora_da_lista`: linha marcada com 👋/❌ — relatada, mas **não** confirmada.
-   * - `ja_confirmado`: o nome só se parece com quem **já está confirmado** na
-   *   partida (lista colada duas vezes, ou duas linhas parecidas disputando o
-   *   mesmo mensalista). Nada é alterado: nem reconfirma, nem cria convidado
-   *   homônimo — a linha fica visível para o organizador resolver.
+   * - `ja_confirmado`: a linha **repete** alguém que já está confirmado (lista
+   *   colada duas vezes, ou duas linhas com praticamente o mesmo nome
+   *   disputando o mesmo mensalista). Nada é alterado: nem reconfirma, nem cria
+   *   convidado homônimo — a linha fica visível para o organizador resolver.
+   * - `linha_invalida`: a linha tinha texto mas nenhum nome ("2-" sozinho, um
+   *   emoji solto). Nada foi confirmado — e, principalmente, ela **não**
+   *   é descartada em silêncio: aparece na conferência para o organizador ver
+   *   por que a lista tem menos confirmados do que linhas.
+   *
+   * Toda linha com texto vira exatamente uma entrada desta lista: o que o
+   * organizador contou no campo é o que ele confere aqui.
    */
-  resolution: "mensalista" | "convidado_criado" | "fora_da_lista" | "ja_confirmado";
+  resolution:
+    | "mensalista"
+    | "convidado_criado"
+    | "fora_da_lista"
+    | "ja_confirmado"
+    | "linha_invalida";
   confidence: number;
-  /** Nulo nas linhas `fora_da_lista`, que não viram jogador nenhum. */
+  /** Nulo nas linhas `fora_da_lista` e `linha_invalida`, que não viram jogador
+   * nenhum. */
   player_id: number | null;
   player_name: string | null;
   player_type: "mensalista" | "convidado" | null;

@@ -78,9 +78,40 @@ export function QuickConfirmResolutionList({
   const outCount = rows.filter((r) => r.resolution === "fora_da_lista").length;
   const alreadyConfirmedCount = rows.filter((r) => r.resolution === "ja_confirmado").length;
   const pendingReviewCount = rows.filter((r) => r.resolution === "convidado_criado").length;
+  const invalidCount = rows.filter((r) => r.resolution === "linha_invalida").length;
+
+  /** Quem de fato entrou na partida. As outras resoluções existem justamente
+   * para **não** confirmar ninguém. */
+  const enteredCount = rows.filter(
+    (r) => r.resolution === "mensalista" || r.resolution === "convidado_criado",
+  ).length;
+  const missingCount = rows.length - enteredCount;
 
   return (
     <>
+      {/* O fechamento de contas entre o que foi colado e o que entrou.
+        *
+        * Sem ele, uma lista de 24 nomes virava "23 confirmados" e não havia
+        * nada na tela ligando os dois números — o organizador só descobria o
+        * nome que faltou contando os jogadores na hora do sorteio. */}
+      <Alert severity={missingCount > 0 ? "warning" : "success"} sx={{ mb: 2 }}>
+        <strong>{rows.length}</strong> {rows.length === 1 ? "linha lida" : "linhas lidas"} →{" "}
+        <strong>{enteredCount}</strong> {enteredCount === 1 ? "entrou" : "entraram"} na partida.
+        {missingCount > 0 && (
+          <>
+            {" "}
+            {missingCount === 1 ? "1 linha não entrou" : `${missingCount} linhas não entraram`} (
+            {[
+              outCount > 0 && `${outCount} fora da lista`,
+              alreadyConfirmedCount > 0 && `${alreadyConfirmedCount} repetida(s)`,
+              invalidCount > 0 && `${invalidCount} sem nome`,
+            ]
+              .filter(Boolean)
+              .join(", ")}
+            ) — veja abaixo e resolva o que for engano.
+          </>
+        )}
+      </Alert>
       {waitlistedCount > 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
           A partida atingiu a capacidade configurada — {waitlistedCount} nome(s) entraram na lista
@@ -101,6 +132,16 @@ export function QuickConfirmResolutionList({
             : `${alreadyConfirmedCount} linhas apontam para alguém que já estava confirmado`}{" "}
           — nada foi alterado nelas. Pode ser a mesma pessoa repetida na lista (aí é só ignorar) ou{" "}
           <strong>outra pessoa de nome parecido</strong>: nesse caso escolha o jogador certo abaixo.
+        </Alert>
+      )}
+      {invalidCount > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {invalidCount === 1
+            ? "1 linha não tinha nome nenhum"
+            : `${invalidCount} linhas não tinham nome nenhum`}{" "}
+          (só a numeração, ou só um emoji). Nada foi confirmado nelas —{" "}
+          <strong>elas continuam listadas aqui</strong> em vez de sumirem: se alguma era uma
+          pessoa, escolha o jogador certo abaixo.
         </Alert>
       )}
       {pendingReviewCount > 0 && (
@@ -130,13 +171,15 @@ export function QuickConfirmResolutionList({
               <ListItemText
                 primary={row.input_name}
                 secondary={
-                  row.resolution === "mensalista" && row.player_name !== row.parsed_name
-                    ? `Reconhecido como ${row.player_name}`
-                    : // Mostra o que sobrou depois de tirar numeração/emoji/anotação:
-                      // é isso que explica um reconhecimento inesperado.
-                      row.parsed_name !== row.input_name
-                      ? `Procurado como “${row.parsed_name}”`
-                      : undefined
+                  row.resolution === "linha_invalida"
+                    ? "Não sobrou nome nenhum depois de tirar numeração e emoji"
+                    : row.resolution === "mensalista" && row.player_name !== row.parsed_name
+                      ? `Reconhecido como ${row.player_name}`
+                      : // Mostra o que sobrou depois de tirar numeração/emoji/anotação:
+                        // é isso que explica um reconhecimento inesperado.
+                        row.parsed_name !== row.input_name
+                        ? `Procurado como “${row.parsed_name}”`
+                        : undefined
                 }
               />
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -153,6 +196,14 @@ export function QuickConfirmResolutionList({
                   <Chip
                     icon={<DeclineIcon />}
                     label="Fora da lista — não confirmado"
+                    size="small"
+                    variant="outlined"
+                  />
+                ) : row.resolution === "linha_invalida" ? (
+                  <Chip
+                    icon={<WarningIcon />}
+                    label="Sem nome — não confirmado"
+                    color="warning"
                     size="small"
                     variant="outlined"
                   />
@@ -195,6 +246,7 @@ export function QuickConfirmResolutionList({
             </Box>
             {(row.resolution === "convidado_criado" ||
               row.resolution === "ja_confirmado" ||
+              row.resolution === "linha_invalida" ||
               fixOpenFor === row.rowId) && (
               <MensalistaSearchAutocomplete
                 // Só quem **não está confirmado** nesta partida. Quem já está
@@ -206,7 +258,9 @@ export function QuickConfirmResolutionList({
                 placeholder={
                   row.resolution === "ja_confirmado"
                     ? "É outra pessoa? Busque quem deveria entrar"
-                    : "Não é essa pessoa? Busque o nome certo"
+                    : row.resolution === "linha_invalida"
+                      ? "Era alguém? Busque quem deveria entrar"
+                      : "Não é essa pessoa? Busque o nome certo"
                 }
                 sx={{ mt: 1 }}
                 onPick={(player) => {

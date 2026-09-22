@@ -166,10 +166,6 @@ export function DrawAvulsoPage() {
     },
   });
 
-  const confirmedCount =
-    resolutions?.filter((row) => row.resolution === "mensalista" || row.resolution === "convidado_criado")
-      .length ?? 0;
-
   return (
     <AppLayout>
       <PageHeader title="Sorteio avulso" />
@@ -302,9 +298,8 @@ export function DrawAvulsoPage() {
         ) : (
           <>
             <Alert severity="success" variant="outlined">
-              Partida criada com <strong>{confirmedCount}</strong>{" "}
-              {confirmedCount === 1 ? "confirmado" : "confirmados"}. Confira o que o sistema
-              entendeu de cada linha e sorteie.
+              Partida criada. Confira abaixo o que o sistema entendeu de cada linha e sorteie — a
+              conferência fecha a conta entre o que você colou e quem entrou.
             </Alert>
 
             {reassignMutation.isError && (
@@ -329,7 +324,7 @@ export function DrawAvulsoPage() {
                   isLoadingOptions={mensalistasQuery.isLoading}
                   isFixing={reassignMutation.isPending || confirmInsteadMutation.isPending}
                   onFix={(row, player) => {
-                    if (row.resolution === "ja_confirmado") {
+                    if (row.resolution === "ja_confirmado" || row.resolution === "linha_invalida") {
                       confirmInsteadMutation.mutate({ row, player });
                     } else {
                       reassignMutation.mutate({ row, player });

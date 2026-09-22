@@ -210,6 +210,14 @@ export function MatchDetailPage() {
         );
         return;
       }
+      if (resolution.resolution === "linha_invalida") {
+        showToast(
+          `Não consegui ler um nome em “${resolution.input_name}” — ninguém foi adicionado. ` +
+            "Digite só o nome, sem numeração nem emoji.",
+          "info",
+        );
+        return;
+      }
       if (resolution.resolution === "ja_confirmado") {
         showToast(
           `${resolution.player_name} já está confirmado nesta partida — nada foi alterado. ` +
