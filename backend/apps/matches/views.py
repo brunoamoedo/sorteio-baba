@@ -387,7 +387,11 @@ class MatchViewSet(OrganizationScopedViewSetMixin, viewsets.ModelViewSet):
         serializer = QuickConfirmNamesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        results = quick_confirm_names(match=match, raw_names=serializer.validated_data["names"])
+        results = quick_confirm_names(
+            match=match,
+            raw_names=serializer.validated_data["names"],
+            pasted_list=serializer.validated_data["pasted_list"],
+        )
         self._catch_up_automatic_draw(match)
         return Response(results, status=status.HTTP_200_OK)
 

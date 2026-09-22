@@ -197,50 +197,53 @@ export function MatchDetailPage() {
   /** Adicionar um convidado pelo nome usa o mesmo reconhecimento do "Sortear
    * com lista de nomes": se o nome bater com um mensalista, confirma o
    * mensalista em vez de criar um convidado duplicado. */
-  const addGuestMutation = useApiMutation((name: string) => matchesApi.quickConfirm(matchId, [name]), {
-    onSuccess: (results) => {
-      invalidate.presence();
-      setGuestName("");
-      const resolution = results[0];
-      if (!resolution) return;
-      if (resolution.resolution === "fora_da_lista") {
+  const addGuestMutation = useApiMutation(
+    (name: string) => matchesApi.quickConfirm(matchId, [name], { pastedList: false }),
+    {
+      onSuccess: (results) => {
+        invalidate.presence();
+        setGuestName("");
+        const resolution = results[0];
+        if (!resolution) return;
+        if (resolution.resolution === "fora_da_lista") {
+          showToast(
+            `“${resolution.input_name}” está marcado como fora da lista (👋/❌) — ninguém foi confirmado.`,
+            "info",
+          );
+          return;
+        }
+        if (resolution.resolution === "linha_invalida") {
+          showToast(
+            `Não consegui ler um nome em “${resolution.input_name}” — ninguém foi adicionado. ` +
+              "Digite só o nome, sem numeração nem emoji.",
+            "info",
+          );
+          return;
+        }
+        if (resolution.resolution === "ja_confirmado") {
+          showToast(
+            `${resolution.player_name} já está confirmado nesta partida — nada foi alterado. ` +
+              "Se for outra pessoa de nome parecido, confirme por ela na lista abaixo.",
+            "info",
+          );
+          return;
+        }
+        if (resolution.waitlisted) {
+          showToast(
+            `⏳ ${resolution.player_name} entrou na lista de espera (${resolution.waitlist_position}º) — partida cheia.`,
+            "info",
+          );
+          return;
+        }
         showToast(
-          `“${resolution.input_name}” está marcado como fora da lista (👋/❌) — ninguém foi confirmado.`,
-          "info",
+          resolution.resolution === "mensalista"
+            ? `✅ Reconhecido como ${resolution.player_name} (mensalista) e confirmado!`
+            : `✅ ${resolution.player_name} adicionado como convidado e confirmado!`,
         );
-        return;
-      }
-      if (resolution.resolution === "linha_invalida") {
-        showToast(
-          `Não consegui ler um nome em “${resolution.input_name}” — ninguém foi adicionado. ` +
-            "Digite só o nome, sem numeração nem emoji.",
-          "info",
-        );
-        return;
-      }
-      if (resolution.resolution === "ja_confirmado") {
-        showToast(
-          `${resolution.player_name} já está confirmado nesta partida — nada foi alterado. ` +
-            "Se for outra pessoa de nome parecido, confirme por ela na lista abaixo.",
-          "info",
-        );
-        return;
-      }
-      if (resolution.waitlisted) {
-        showToast(
-          `⏳ ${resolution.player_name} entrou na lista de espera (${resolution.waitlist_position}º) — partida cheia.`,
-          "info",
-        );
-        return;
-      }
-      showToast(
-        resolution.resolution === "mensalista"
-          ? `✅ Reconhecido como ${resolution.player_name} (mensalista) e confirmado!`
-          : `✅ ${resolution.player_name} adicionado como convidado e confirmado!`,
-      );
+      },
+      onError: failed("Não foi possível adicionar o jogador."),
     },
-    onError: failed("Não foi possível adicionar o jogador."),
-  });
+  );
 
   const waitlistMutation = useApiMutation(
     (action: WaitlistAction) => {

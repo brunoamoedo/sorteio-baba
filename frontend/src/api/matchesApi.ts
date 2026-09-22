@@ -111,10 +111,21 @@ export const matchesApi = {
     const { data } = await apiClient.post<Team[]>(`/matches/${matchId}/set-results/`, { results });
     return data;
   },
-  quickConfirm: async (matchId: number, names: string[]): Promise<QuickConfirmResolution[]> => {
+  /**
+   * `pastedList: false` diz que é **um nome digitado**, não uma lista colada.
+   * Fora de uma colagem não existe recolagem para proteger, então só um nome
+   * praticamente igual ao de alguém já confirmado conta como repetição — sem
+   * isso, "Deyvid" era engolido por "Leonardo David" já confirmado (0.73) e
+   * não entrava na partida.
+   */
+  quickConfirm: async (
+    matchId: number,
+    names: string[],
+    { pastedList = true }: { pastedList?: boolean } = {},
+  ): Promise<QuickConfirmResolution[]> => {
     const { data } = await apiClient.post<QuickConfirmResolution[]>(
       `/matches/${matchId}/quick-confirm/`,
-      { names },
+      { names, pasted_list: pastedList },
     );
     return data;
   },
