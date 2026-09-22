@@ -36,3 +36,4 @@ data/
 dados.json
 *.sql
 *.sql.gz
+*.dump
