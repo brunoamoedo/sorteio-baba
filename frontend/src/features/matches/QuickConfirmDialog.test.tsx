@@ -209,3 +209,68 @@ describe("escolha do mensalista certo", () => {
     expect(matchesApi.setConfirmation).not.toHaveBeenCalled();
   });
 });
+
+describe("a conferência fecha a conta com o que foi colado", () => {
+  it("relaciona linhas lidas e quem entrou, e diz por que alguém não entrou", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.quickConfirm).mockResolvedValue([
+      resolution({
+        input_name: "Leo David",
+        parsed_name: "Leo David",
+        resolution: "mensalista",
+        player_id: MACEDO.id,
+        player_name: "Macedo",
+        player_type: "mensalista",
+        confidence: 0.77,
+      }),
+      resolution({
+        input_name: "2-",
+        parsed_name: "",
+        resolution: "linha_invalida",
+        player_id: null,
+        player_name: null,
+        player_type: null,
+        confidence: 0,
+      }),
+    ]);
+    renderDialog();
+
+    await pasteList(user, "Leo David");
+
+    // O número de linhas e o de confirmados aparecem juntos: era a ausência
+    // dessa ligação que deixava "colei 24, entraram 23" passar sem ninguém ver.
+    const summary = screen.getByText(/linhas lidas/).closest(".MuiAlert-message");
+    expect(summary?.textContent).toContain("2");
+    expect(summary?.textContent).toContain("1 linha não entrou");
+    expect(summary?.textContent).toContain("1 sem nome");
+  });
+
+  it("uma linha sem nome é listada, não descartada, e pode virar alguém", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.quickConfirm).mockResolvedValue([
+      resolution({
+        input_name: "2-",
+        parsed_name: "",
+        resolution: "linha_invalida",
+        player_id: null,
+        player_name: null,
+        player_type: null,
+        confidence: 0,
+      }),
+    ]);
+    renderDialog();
+
+    await pasteList(user, "2-");
+
+    expect(screen.getByText("Sem nome — não confirmado")).toBeInTheDocument();
+
+    await user.click(screen.getByPlaceholderText("Era alguém? Busque quem deveria entrar"));
+    await user.click(await screen.findByRole("option", { name: "Macedo" }));
+
+    // A linha não confirmou ninguém: é confirmação, não correção.
+    await waitFor(() =>
+      expect(matchesApi.setConfirmation).toHaveBeenCalledWith(MATCH_ID, MACEDO.id, "confirmed"),
+    );
+    expect(matchesApi.reassignConfirmation).not.toHaveBeenCalled();
+  });
+});

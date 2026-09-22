@@ -17,7 +17,7 @@ from .models import (
     RecurringGame,
     WaitlistEntry,
 )
-from .name_matching import best_match, parse_roster_line
+from .name_matching import REPEAT_THRESHOLD, best_match, parse_roster_line
 
 # ---------------------------------------------------------------------------
 # Geração de partidas a partir de jogos recorrentes
@@ -704,9 +704,16 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
     reaproveitado, se já existir um convidado com esse nome exato) e confirmado
     no lugar — permitindo corrigir depois via `reassign_confirmation`.
 
-    Uma linha cujo nome só se parece com quem **já está confirmado** é relatada
-    como `ja_confirmado` e não mexe em nada: não reconfirma (seria um no-op
-    invisível) nem cria convidado homônimo.
+    Uma linha que **repete** alguém já confirmado é relatada como
+    `ja_confirmado` e não mexe em nada: não reconfirma (seria um no-op
+    invisível) nem cria convidado homônimo. "Repete" é exigente de propósito
+    dentro da lista colada — ver `REPEAT_THRESHOLD`: parecer um pouco com quem
+    já entrou não é ser a mesma pessoa, e tratar como repetição deixava alguém
+    de verdade fora da partida em silêncio.
+
+    Nenhuma linha some: uma linha de onde não sobra nome nenhum ("2-" sozinho,
+    um emoji solto) volta como `linha_invalida` para o organizador ver, em vez
+    de ser descartada sem aviso.
 
     Linhas marcadas com 👋/❌ (quem saiu da lista) são **relatadas e não
     confirmadas**: entrar em campo quem desistiu é um erro silencioso; aparecer
@@ -734,7 +741,19 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
     # depois de já ter confirmado alguém na mão.
     confirmed_ids = {confirmation.player_id for confirmation in confirmed_confirmations(match)}
     available = [player for player in mensalistas if player.id not in confirmed_ids]
-    already_confirmed = [player for player in mensalistas if player.id in confirmed_ids]
+    # Quem já estava confirmado **antes** desta chamada e quem foi reconhecido
+    # **por uma linha desta lista** são coisas diferentes, e a pergunta "esta
+    # linha é repetição?" se responde diferente nos dois casos:
+    #
+    # - Já estava dentro: recolar a lista é rotina (o grupo atualiza e o
+    #   organizador cola de novo). Aqui vale a tolerância normal, senão a
+    #   segunda colagem criaria um convidado fantasma homônimo de cada
+    #   mensalista reconhecido por semelhança.
+    # - Entrou por uma linha desta mesma lista: aí duas linhas são duas pessoas.
+    #   Só um nome praticamente igual é repetição (`REPEAT_THRESHOLD`); parecido
+    #   é outra pessoa e precisa entrar.
+    confirmed_before = [player for player in mensalistas if player.id in confirmed_ids]
+    claimed_now: list[Player] = []
     # Resolvida sob demanda: uma lista em que todos os nomes são reconhecidos
     # não precisa de posição padrão nenhuma, e a organização não deve ser
     # obrigada a ter posições cadastradas para usar o reconhecimento.
@@ -744,6 +763,28 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
     for raw in raw_names:
         line = parse_roster_line(raw)
         if line is None:
+            if not raw.strip():
+                # Linha em branco não é linha: não há o que mostrar ao
+                # organizador nem o que ele possa corrigir.
+                continue
+            # Tinha texto, mas não sobrou nome nenhum ("2-" sozinho, um emoji
+            # solto). A linha é **relatada**, não descartada: sumir em silêncio
+            # é como a lista colada entrava na partida com menos gente do que o
+            # organizador contou, sem nada na tela apontando qual linha se
+            # perdeu.
+            results.append(
+                {
+                    "input_name": raw.strip(),
+                    "parsed_name": "",
+                    "resolution": "linha_invalida",
+                    "confidence": 0.0,
+                    "player_id": None,
+                    "player_name": None,
+                    "player_type": None,
+                    "waitlisted": False,
+                    "waitlist_position": None,
+                }
+            )
             continue
 
         if line.is_out:
@@ -768,12 +809,16 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
 
         if player is None:
             # Não sobrou mensalista disponível parecido com este nome. Antes de
-            # criar um convidado, confere os que **já estão confirmados**: se o
-            # nome é de alguém que já está na partida, a linha é uma repetição
-            # (lista colada duas vezes, presença marcada na mão antes) e criar
-            # um convidado homônimo seria exatamente o duplicado que o
-            # reconhecimento existe para evitar.
-            repeated, repeated_score = best_match(name, already_confirmed)
+            # criar um convidado, confere os que **já estão confirmados**: se a
+            # linha repete alguém que já está na partida, criar um convidado
+            # homônimo seria exatamente o duplicado que o reconhecimento existe
+            # para evitar. Os dois grupos são consultados com exigências
+            # diferentes — ver o comentário de `confirmed_before`/`claimed_now`.
+            repeated, repeated_score = best_match(name, confirmed_before)
+            if repeated is None:
+                repeated, repeated_score = best_match(
+                    name, claimed_now, threshold=REPEAT_THRESHOLD
+                )
             if repeated is not None:
                 results.append(
                     {
@@ -814,7 +859,7 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
             # Reconhecido: sai da disputa e passa a contar como já confirmado,
             # para que uma linha repetida caia no caminho "ja_confirmado".
             available.remove(player)
-            already_confirmed.append(player)
+            claimed_now.append(player)
 
         outcome = set_confirmation(match=match, player=player, status=Confirmation.Status.CONFIRMED)
         results.append(

@@ -7,6 +7,22 @@ from apps.players.models import Player
 
 MATCH_THRESHOLD = 0.72
 
+# Limiar usado para dizer que uma linha é **repetição** de outra já processada
+# nesta mesma lista — bem mais alto que o do reconhecimento, de propósito.
+#
+# Errar para mais no reconhecimento custa um nome trocado: aparece na
+# conferência e se corrige ali mesmo. Errar para mais aqui custa uma **pessoa
+# fora da partida**, porque a linha não confirma ninguém. Com o limiar único de
+# 0.72, "Deyvid" (0.73 contra o mensalista "Leonardo David", que a linha "Leo
+# David" já havia levado) era tratado como repetição e o Deyvid de verdade não
+# entrava: uma lista de 24 nomes virava 23 confirmados, sem nada na tela
+# dizendo quem ficou de fora.
+#
+# Dentro de uma mesma lista colada, duas linhas são duas pessoas — o organizador
+# escreve uma linha por participante. Só um nome praticamente igual é repetição
+# de verdade.
+REPEAT_THRESHOLD = 0.92
+
 
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
@@ -131,10 +147,16 @@ def _token_score(input_tokens: list[str], candidate_tokens: list[str]) -> float:
     return sum(per_token_best) / len(per_token_best)
 
 
-def best_match(name: str, candidates: list[Player]) -> tuple[Player | None, float]:
+def best_match(
+    name: str, candidates: list[Player], *, threshold: float = MATCH_THRESHOLD
+) -> tuple[Player | None, float]:
     """Encontra o mensalista mais parecido com `name` (nome ou apelido), ignorando
     acentos/caixa. Usado para reconhecer mensalistas a partir de uma lista de nomes
     colada manualmente (ex.: WhatsApp), tolerando pequenas variações de digitação.
+
+    `threshold` é parâmetro porque as duas perguntas feitas a esta função não têm
+    o mesmo custo de erro: "quem é este nome?" é tolerante (`MATCH_THRESHOLD`),
+    "esta linha é repetição de outra?" é exigente (`REPEAT_THRESHOLD`).
 
     Empate é decidido pelo candidato **mais específico**: "Barba" pontua 1.0
     tanto para o mensalista "Barba" quanto para "Bruno barba" (o token bate nos
@@ -162,6 +184,6 @@ def best_match(name: str, candidates: list[Player]) -> tuple[Player | None, floa
                 best_score = score
                 best_player = player
 
-    if best_score >= MATCH_THRESHOLD:
+    if best_score >= threshold:
         return best_player, best_score
     return None, best_score
