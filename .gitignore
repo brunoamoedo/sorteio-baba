@@ -27,6 +27,10 @@ Thumbs.db
 
 # Produção — segredos do servidor, nunca versionados.
 .env.prod
+# As cópias que se faz antes de mexer nele ("vou só guardar o de antes") são o
+# mesmo segredo com outro nome, e o padrão acima não as pega.
+.env.prod.bak*
+.env.prod.*.bak
 data/
 
 # Dumps e backups do banco. `dados.json` é o nome que o DEPLOY.md manda usar

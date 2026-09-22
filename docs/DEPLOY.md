@@ -17,12 +17,34 @@ internet ──▶ Apache :443
 
 ## 0. O comando, e por que ele leva `-p`
 
-O servidor usa o **`docker-compose` v1** (com hífen, o script Python). Todos os
-comandos deste documento levam `-p sorteiobaba-prod`:
+Use o **`docker compose` v2** (com espaço, o plugin). Todos os comandos deste
+documento levam `-p sorteiobaba-prod`:
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml <comando>
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml <comando>
 ```
+
+> **Não use o `docker-compose` v1** (com hífen, o script Python do apt). Ele
+> quebra ao recriar um container cuja imagem foi construída pelo Docker novo:
+>
+> ```
+> KeyError: 'ContainerConfig'
+> ```
+>
+> A falha acontece **no meio** do `up`: o v1 já parou e renomeou os containers
+> antigos, e aí morre sem criar os novos — o site fica fora do ar até alguém
+> remover os órfãos na mão (`docker rm <hash>_sorteiobaba-prod_backend_1`) e
+> subir de novo. Foi exatamente o que aconteceu num deploy.
+>
+> Instalar o plugin v2, se a máquina ainda não tiver (`docker compose version`
+> responde "unknown command"):
+>
+> ```bash
+> sudo install -m 0755 -d /usr/local/lib/docker/cli-plugins
+> sudo curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+>   https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64
+> sudo chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+> ```
 
 O `-p` fixa o nome do projeto. Sem ele o compose deriva o nome da **pasta**, que
 é a mesma do `docker-compose.yml` de desenvolvimento — os serviços têm nomes
@@ -30,13 +52,8 @@ iguais (`backend`, `postgres`, ...) e um `up` daqui destruiria e recriaria os
 containers do outro, banco incluído. Num servidor que só roda produção não há
 com o que colidir, mas o hábito evita a surpresa no dia em que houver.
 
-O `docker-compose.prod.yml` declara `version: "2.4"` por causa do v1, que exige
-a chave. O 2.4 é a versão mais alta do ramo 2.x e cobre `depends_on` com
-`condition: service_healthy`, `start_period` no healthcheck e `target` no build
-— coisas que o ramo 3.x não tem.
-
-Se um dia você migrar para o plugin v2 (`docker compose`, com espaço), o mesmo
-arquivo funciona: ele só avisa que a chave `version` é obsoleta.
+O `docker-compose.prod.yml` não declara `version:`. A chave existia só para o
+v1, que a exigia; no v2 ela é ignorada e gera um aviso a cada invocação.
 
 ## 1. Apontar o DNS
 
@@ -66,7 +83,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # senha do banco
 ## 3. Subir os containers
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
 ```
 
 O primeiro build demora alguns minutos. O `entrypoint.prod.sh` roda `migrate` e
@@ -76,7 +93,7 @@ ficar saudável para não subirem contra um banco sem migrar.
 Confira antes de mexer no Apache:
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml ps          # todos "healthy"/"running"
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml ps          # todos "healthy"/"running"
 curl -s localhost:8000/api/health/                    # {"status": "ok"}
 curl -sI localhost:8080 | head -1                     # HTTP/1.1 200 OK
 ```
@@ -120,8 +137,8 @@ certificado subir**.
 O banco de produção nasce vazio. Crie o Super Administrador:
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py createsuperuser
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py shell -c \
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml exec backend python manage.py shell -c \
   "from apps.accounts.models import User; User.objects.filter(username='SEU_USUARIO').update(is_superadmin=True, is_superuser=True, is_staff=True)"
 ```
 
@@ -161,7 +178,7 @@ de importar.
 No servidor, com os containers já no ar:
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend \
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend \
   python manage.py loaddata /dev/stdin < dados.json
 ```
 
@@ -172,7 +189,7 @@ O banco precisa estar **recém-migrado e vazio** — se você já criou o
 superusuário e a organização da seção 6, as chaves colidem. Confira antes:
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend python manage.py shell -c "from apps.accounts.models import User, Organization; print(User.objects.count(), Organization.objects.count())"
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T backend python manage.py shell -c "from apps.accounts.models import User, Organization; print(User.objects.count(), Organization.objects.count())"
 ```
 
 Os usuários vão no dump **com as senhas**: depois de importar você entra com o
@@ -187,12 +204,42 @@ servidor à parte (`rsync -av backend/media/ servidor:/opt/sorteio-baba/data/med
 ```bash
 cd /opt/sorteio-baba
 git pull
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
 ```
 
 O `--build` não é opcional: a URL da API é **assada no bundle** do frontend em
 tempo de build (o Vite inlineia as `VITE_*`), então imagem velha continua
 apontando para onde apontava.
+
+### `$` no `.env.prod` precisa ser escrito `$$`
+
+O compose v2 **interpola variáveis dentro do `env_file`** — o v1 não fazia isso.
+Um valor com `$` é lido como nome de variável e some:
+
+```
+DJANGO_SECRET_KEY=abc$h1$xyz     → o container recebe "abc"
+DJANGO_SECRET_KEY=abc$$h1$$xyz   → o container recebe "abc$h1$xyz"  ✅
+```
+
+Silencioso e caro: a `DJANGO_SECRET_KEY` assina sessão e reset de senha, então
+uma chave truncada desloga todo mundo e invalida os links de redefinição já
+enviados — e nada no log diz o porquê. O compose avisa, mas no meio de outras
+linhas:
+
+```
+level=warning msg="The \"h\" variable is not set. Defaulting to a blank string."
+```
+
+Conferir se algum valor tem `$` sem escapar:
+
+```bash
+grep -nE '^[A-Z_]+=.*[^$]\$[^$]' .env.prod
+```
+
+Gerar chaves com `secrets.token_urlsafe` evita o problema na origem — o
+alfabeto dele não tem `$`.
+
+### Variáveis novas
 
 O `git pull` traz o `.env.prod.example`, **nunca** o seu `.env.prod`. Quando o
 exemplo ganhar uma variável nova, o deploy sobe sem ela e o erro aparece longe
@@ -207,7 +254,7 @@ diff <(grep -o '^[A-Z_]*=' .env.prod.example | sort)      <(grep -o '^[A-Z_]*=' 
 O que importa é o Postgres e as fotos.
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T postgres \
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml exec -T postgres \
   pg_dump -U pelada pelada | gzip > backup-$(date +%F).sql.gz
 tar czf media-$(date +%F).tar.gz data/media/
 ```
@@ -254,6 +301,6 @@ docker inspect -f '{{range .State.Health.Log}}{{.ExitCode}} {{.Output}}{{println
 ```
 
 ```bash
-docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml logs -f backend
+docker compose -p sorteiobaba-prod -f docker-compose.prod.yml logs -f backend
 sudo tail -f /var/log/apache2/peakyblindersbaba-error.log
 ```

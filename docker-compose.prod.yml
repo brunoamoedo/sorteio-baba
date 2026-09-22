@@ -11,23 +11,23 @@
 #     ├── /api, /admin → backend   (127.0.0.1:8000)  gunicorn
 #     └── /media       → ./data/media                servido em disco
 #
-# Subir:   docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
-# Ver log: docker-compose -p sorteiobaba-prod -f docker-compose.prod.yml logs -f backend
+# Subir:   docker compose -p sorteiobaba-prod -f docker-compose.prod.yml up -d --build
+# Ver log: docker compose -p sorteiobaba-prod -f docker-compose.prod.yml logs -f backend
 
-# `version: "2.4"`, e não a ausência de versão do formato novo: o servidor roda o
-# **docker-compose v1** (o script Python, com hífen), que exige a chave e não
-# entende o formato sem ela. O 2.4 é a versão mais alta do ramo 2.x e cobre
-# tudo que este arquivo usa — `depends_on` com `condition: service_healthy`,
-# `start_period` no healthcheck e `target` no build. No ramo 3.x as duas
-# primeiras não existem.
+# Sem chave `version:`. Ela existia para o **docker-compose v1** (o script
+# Python, com hífen), que a exigia; o v1 não é mais usado aqui — ele quebra com
+# `KeyError: 'ContainerConfig'` ao recriar container cuja imagem foi construída
+# pelo Docker novo, e deixou o site fora do ar num deploy. O `docker compose` v2
+# (com espaço) ignora a chave e avisa que é obsoleta, então ela só produzia
+# ruído em toda invocação.
 #
-# O `docker compose` v2 (com espaço) também lê este arquivo; ele só avisa que a
-# chave `version` é obsoleta.
-version: "2.4"
+# `depends_on` com `condition: service_healthy`, `start_period` no healthcheck e
+# `target` no build — tudo que este arquivo usa — o v2 suporta.
 
-# ⚠️ Não existe chave `name:` aqui — ela é do formato novo, e é justamente o que
-# fazia o v1 recusar o arquivo. Sem ela o compose deriva o nome do projeto da
-# **pasta**, que é a mesma do `docker-compose.yml` de desenvolvimento: os
+# ⚠️ Não existe chave `name:` aqui — mantida de fora porque o `-p` da linha de
+# comando é o que a documentação usa, e duas fontes para o mesmo nome divergem
+# no dia em que alguém mexer numa só. Sem ela o compose deriva o nome do projeto
+# da **pasta**, que é a mesma do `docker-compose.yml` de desenvolvimento: os
 # serviços colidiriam e um `up` daqui destruiria os containers do outro.
 #
 # Por isso **todo** comando leva `-p sorteiobaba-prod`:
