@@ -17,7 +17,7 @@ from .models import (
     RecurringGame,
     WaitlistEntry,
 )
-from .name_matching import REPEAT_THRESHOLD, best_match, parse_roster_line
+from .name_matching import MATCH_THRESHOLD, REPEAT_THRESHOLD, best_match, parse_roster_line
 
 # ---------------------------------------------------------------------------
 # Geração de partidas a partir de jogos recorrentes
@@ -690,7 +690,9 @@ def _default_guest_position(organization) -> Position:
 
 
 @transaction.atomic
-def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
+def quick_confirm_names(
+    *, match: Match, raw_names: list[str], pasted_list: bool = True
+) -> list[dict]:
     """Confirma presença a partir de uma lista de nomes colados manualmente.
 
     Cada linha é primeiro **decomposta** (`parse_roster_line`): a numeração da
@@ -714,6 +716,11 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
     Nenhuma linha some: uma linha de onde não sobra nome nenhum ("2-" sozinho,
     um emoji solto) volta como `linha_invalida` para o organizador ver, em vez
     de ser descartada sem aviso.
+
+    `pasted_list=False` diz que isto **não** é uma lista colada e sim um nome
+    digitado de propósito (o campo "adicionar convidado pelo nome"). A diferença
+    está em quanta semelhança com quem já está confirmado conta como repetição
+    — ver `confirmed_before` abaixo.
 
     Linhas marcadas com 👋/❌ (quem saiu da lista) são **relatadas e não
     confirmadas**: entrar em campo quem desistiu é um erro silencioso; aparecer
@@ -752,7 +759,14 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
     # - Entrou por uma linha desta mesma lista: aí duas linhas são duas pessoas.
     #   Só um nome praticamente igual é repetição (`REPEAT_THRESHOLD`); parecido
     #   é outra pessoa e precisa entrar.
+    #
+    # Fora de uma colagem (`pasted_list=False`) não existe recolagem para
+    # proteger: o organizador digitou **um nome**, de propósito. Aplicar ali a
+    # tolerância de lista faz o nome ser engolido por qualquer confirmado
+    # parecido — foi como "Deyvid" (0.73 contra "Leonardo David", já confirmado)
+    # deixou de entrar na partida mesmo sendo digitado à mão.
     confirmed_before = [player for player in mensalistas if player.id in confirmed_ids]
+    before_threshold = MATCH_THRESHOLD if pasted_list else REPEAT_THRESHOLD
     claimed_now: list[Player] = []
     # Resolvida sob demanda: uma lista em que todos os nomes são reconhecidos
     # não precisa de posição padrão nenhuma, e a organização não deve ser
@@ -814,7 +828,9 @@ def quick_confirm_names(*, match: Match, raw_names: list[str]) -> list[dict]:
             # homônimo seria exatamente o duplicado que o reconhecimento existe
             # para evitar. Os dois grupos são consultados com exigências
             # diferentes — ver o comentário de `confirmed_before`/`claimed_now`.
-            repeated, repeated_score = best_match(name, confirmed_before)
+            repeated, repeated_score = best_match(
+                name, confirmed_before, threshold=before_threshold
+            )
             if repeated is None:
                 repeated, repeated_score = best_match(
                     name, claimed_now, threshold=REPEAT_THRESHOLD

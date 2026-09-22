@@ -456,3 +456,68 @@ def test_blank_lines_are_not_reported():
     results = quick_confirm_names(match=match, raw_names=["Barba", "", "   "])
 
     assert len(results) == 1
+
+
+# ---------------------------------------------------------------------------
+# Nome digitado de propósito não é recolagem
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_single_typed_name_is_not_swallowed_by_a_similar_confirmed_player():
+    """O caso que apareceu ao consertar a partida na mão: "Deyvid" digitado no
+    campo de convidado avulso pontua 0.73 contra "Leonardo David", que já está
+    confirmado. Na colagem isso é recolagem (e é repetição); digitado, é uma
+    pessoa que o organizador quer dentro."""
+    org = OrganizationFactory()
+    [leonardo] = _mensalistas(org, ["Leonardo David"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+    quick_confirm_names(match=match, raw_names=["Leo David"])
+    assert Confirmation.objects.filter(
+        match=match, player=leonardo, status=Confirmation.Status.CONFIRMED
+    ).exists()
+
+    results = quick_confirm_names(match=match, raw_names=["Deyvid"], pasted_list=False)
+
+    assert results[0]["resolution"] == "convidado_criado"
+    assert results[0]["player_name"] == "Deyvid"
+    assert (
+        Confirmation.objects.filter(
+            match=match, status=Confirmation.Status.CONFIRMED
+        ).count()
+        == 2
+    )
+
+
+@pytest.mark.django_db
+def test_typed_name_still_reports_an_exact_repeat():
+    """Apertar o critério não desliga a proteção: digitar quem já está dentro
+    continua sendo relatado como repetição, sem criar convidado homônimo."""
+    org = OrganizationFactory()
+    [barba] = _mensalistas(org, ["Barba"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+    quick_confirm_names(match=match, raw_names=["Barba"])
+
+    results = quick_confirm_names(match=match, raw_names=["Barba"], pasted_list=False)
+
+    assert results[0]["resolution"] == "ja_confirmado"
+    assert results[0]["player_id"] == barba.id
+    assert not Player.objects.filter(
+        organization=org, player_type=Player.PlayerType.CONVIDADO, name__iexact="Barba"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_pasted_list_keeps_the_tolerant_repeat_check():
+    """O padrão continua sendo colagem: recolar a lista não cria fantasma."""
+    org = OrganizationFactory()
+    _mensalistas(org, ["Leonardo David"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+    quick_confirm_names(match=match, raw_names=["Leo David"])
+
+    results = quick_confirm_names(match=match, raw_names=["Leo David"])
+
+    assert results[0]["resolution"] == "ja_confirmado"
+    assert not Player.objects.filter(
+        organization=org, player_type=Player.PlayerType.CONVIDADO, name__iexact="Leo David"
+    ).exists()

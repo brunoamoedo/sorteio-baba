@@ -354,6 +354,10 @@ class QuickConfirmNamesSerializer(serializers.Serializer):
     names = serializers.ListField(
         child=serializers.CharField(allow_blank=True, trim_whitespace=True), allow_empty=False
     )
+    # Uma lista colada do grupo, ou um nome digitado de propósito? Muda quanta
+    # semelhança com quem já está confirmado conta como repetição — o padrão
+    # `True` mantém o contrato de quem já chamava esta rota.
+    pasted_list = serializers.BooleanField(default=True)
 
 
 class ReassignConfirmationSerializer(_OrganizationScopedPlayerSerializer):
