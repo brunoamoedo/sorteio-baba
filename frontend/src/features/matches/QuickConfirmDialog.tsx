@@ -17,6 +17,7 @@ import { BulkNamesInput, splitNames } from "./BulkNamesInput";
 import { matchKeys, useMatchInvalidation } from "./matchQueries";
 import {
   applyFix,
+  applyGuest,
   QuickConfirmResolutionList,
   toResolutionRows,
   type ResolutionRow,
@@ -115,12 +116,26 @@ export function QuickConfirmDialog({ open, matchId, onClose }: QuickConfirmDialo
     },
   );
 
+  /** A linha reconhecida como mensalista era um convidado: o mensalista sai e
+   * entra um convidado com o nome que foi procurado. */
+  const convertToGuestMutation = useApiMutation(
+    (row: ResolutionRow) =>
+      matchesApi.confirmAsGuest(matchId, row.player_id ?? 0, row.parsed_name),
+    {
+      onSuccess: (guest, row) => {
+        setResolutions((current) => applyGuest(current, row.rowId, guest));
+        invalidate.presence();
+      },
+    },
+  );
+
   const handleClose = () => {
     setNamesText("");
     setResolutions(null);
     quickConfirmMutation.reset();
     reassignMutation.reset();
     confirmInsteadMutation.reset();
+    convertToGuestMutation.reset();
     onClose();
   };
 
@@ -173,11 +188,24 @@ export function QuickConfirmDialog({ open, matchId, onClose }: QuickConfirmDialo
                 )}
               </Alert>
             )}
+            {convertToGuestMutation.isError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {getApiErrorMessage(
+                  convertToGuestMutation.error,
+                  "Não foi possível trocar por convidado.",
+                )}
+              </Alert>
+            )}
             <QuickConfirmResolutionList
               rows={resolutions}
               availableMensalistas={availableMensalistas}
               isLoadingOptions={mensalistasQuery.isLoading || rosterQuery.isLoading}
-              isFixing={reassignMutation.isPending || confirmInsteadMutation.isPending}
+              isFixing={
+                reassignMutation.isPending ||
+                confirmInsteadMutation.isPending ||
+                convertToGuestMutation.isPending
+              }
+              onConvertToGuest={(row) => convertToGuestMutation.mutate(row)}
               onFix={(row, player) => {
                 // Estas linhas não confirmaram ninguém: não há o que desfazer,
                 // só o que confirmar.

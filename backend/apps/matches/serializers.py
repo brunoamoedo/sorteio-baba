@@ -365,6 +365,11 @@ class ReassignConfirmationSerializer(_OrganizationScopedPlayerSerializer):
     correct_player = serializers.PrimaryKeyRelatedField(queryset=Player.objects.none())
 
 
+class ConfirmAsGuestSerializer(_OrganizationScopedPlayerSerializer):
+    wrong_player = serializers.PrimaryKeyRelatedField(queryset=Player.objects.none())
+    name = serializers.CharField(max_length=150)
+
+
 class WaitlistPlayerSerializer(_OrganizationScopedPlayerSerializer):
     player = serializers.PrimaryKeyRelatedField(queryset=Player.objects.none())
 

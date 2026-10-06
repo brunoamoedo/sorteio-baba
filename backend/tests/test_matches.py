@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.matches.models import Confirmation, Match
 from apps.matches.services import (
+    confirm_as_guest,
     ensure_next_match,
     quick_confirm_names,
     reassign_confirmation,
@@ -576,6 +577,75 @@ def test_reassign_confirmation_refuses_a_mensalista_already_in_the_match():
     # Nada foi desfeito: o convidado errado continua confirmado até que a
     # correção aponte para alguém que realmente está fora.
     assert Confirmation.objects.get(match=match, player=wrong_player).status == Confirmation.Status.CONFIRMED
+
+
+@pytest.mark.django_db
+def test_confirm_as_guest_swaps_a_recognized_mensalista_for_a_guest():
+    """A lista reconheceu "João" como o mensalista João Macena, mas era um
+    convidado: o mensalista sai e entra um convidado com o nome da linha."""
+    org = OrganizationFactory()
+    match = MatchFactory(organization=org)
+    position = PositionFactory(organization=org)
+    mensalista = PlayerFactory(
+        organization=org, name="João Macena", player_type="mensalista", primary_position=position
+    )
+
+    results = quick_confirm_names(match=match, raw_names=["João"])
+    assert results[0]["resolution"] == "mensalista"
+    assert results[0]["player_id"] == mensalista.id
+
+    outcome = confirm_as_guest(match=match, wrong_player=mensalista, name=results[0]["parsed_name"])
+
+    guest = outcome.player
+    assert guest.player_type == Player.PlayerType.CONVIDADO
+    assert guest.name == "João"
+    assert guest.is_temporary
+    assert Confirmation.objects.get(match=match, player=guest).status == Confirmation.Status.CONFIRMED
+    assert Confirmation.objects.get(match=match, player=mensalista).status == Confirmation.Status.DECLINED
+    # O mensalista continua cadastrado: só não está nesta partida.
+    assert Player.objects.filter(id=mensalista.id).exists()
+
+
+@pytest.mark.django_db
+def test_confirm_as_guest_refuses_a_guest_already_in_the_match():
+    """Trocar pelo mesmo convidado que já está dentro não acrescentaria ninguém:
+    a partida perderia o mensalista e uma vaga em silêncio."""
+    org = OrganizationFactory()
+    match = MatchFactory(organization=org)
+    position = PositionFactory(organization=org)
+    mensalista = PlayerFactory(
+        organization=org, name="Isaac Rodrigues Marocas", player_type="mensalista", primary_position=position
+    )
+    quick_confirm_names(match=match, raw_names=["Isaac Rodrigues Marocas", "Fulano Desconhecido"])
+
+    with pytest.raises(DomainError):
+        confirm_as_guest(match=match, wrong_player=mensalista, name="Fulano Desconhecido")
+
+    assert Confirmation.objects.get(match=match, player=mensalista).status == Confirmation.Status.CONFIRMED
+
+
+@pytest.mark.django_db
+def test_confirm_as_guest_endpoint():
+    org = OrganizationFactory()
+    membership = MembershipFactory(organization=org, role=ROLE_ORGANIZADOR)
+    match = MatchFactory(organization=org)
+    position = PositionFactory(organization=org)
+    mensalista = PlayerFactory(
+        organization=org, name="João Macena", player_type="mensalista", primary_position=position
+    )
+    quick_confirm_names(match=match, raw_names=["João"])
+
+    client = authenticated_client(membership.user, organization=org)
+    response = client.post(
+        f"/api/matches/{match.id}/confirm-as-guest/",
+        {"wrong_player": mensalista.id, "name": "João"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["player_type"] == "convidado"
+    assert response.data["player_name"] == "João"
+    assert response.data["waitlisted"] is False
 
 
 @pytest.mark.django_db
