@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import { fetchAllPages } from "./fetchAllPages";
 import type {
+  ConfirmAsGuestResult,
   ConfirmedList,
   Match,
   MyMatch,
@@ -138,6 +139,22 @@ export const matchesApi = {
       wrong_player: wrongPlayerId,
       correct_player: correctPlayerId,
     });
+    return data;
+  },
+  /**
+   * O contrário de `reassignConfirmation`: a lista reconheceu um mensalista,
+   * mas a linha era um convidado. O mensalista sai e entra um convidado com
+   * `name` — reaproveitado se já existir um com esse nome exato.
+   */
+  confirmAsGuest: async (
+    matchId: number,
+    wrongPlayerId: number,
+    name: string,
+  ): Promise<ConfirmAsGuestResult> => {
+    const { data } = await apiClient.post<ConfirmAsGuestResult>(
+      `/matches/${matchId}/confirm-as-guest/`,
+      { wrong_player: wrongPlayerId, name },
+    );
     return data;
   },
 };

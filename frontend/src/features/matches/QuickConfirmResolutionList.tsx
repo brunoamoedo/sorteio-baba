@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { Alert, Box, Button, Chip, List, ListItem, ListItemText } from "@mui/material";
 
-import type { QuickConfirmResolution } from "../../core/types/match";
+import type { ConfirmAsGuestResult, QuickConfirmResolution } from "../../core/types/match";
 import type { Player } from "../../core/types/player";
-import { ConfirmIcon, DeclineIcon, PlayersIcon, WaitlistIcon, WarningIcon } from "../../shared/icons";
+import {
+  ConfirmIcon,
+  DeclineIcon,
+  PersonAddIcon,
+  PersonIcon,
+  PlayersIcon,
+  WaitlistIcon,
+  WarningIcon,
+} from "../../shared/icons";
 import { MensalistaSearchAutocomplete } from "./MensalistaSearchAutocomplete";
 
 /** Cada linha processada ganha um índice estável. A chave anterior era o nome
@@ -11,6 +19,9 @@ import { MensalistaSearchAutocomplete } from "./MensalistaSearchAutocomplete";
  * gerava chaves React duplicadas e as linhas paravam de atualizar direito. */
 export interface ResolutionRow extends QuickConfirmResolution {
   rowId: number;
+  /** O organizador disse que esta linha é convidado — não é o "convidado não
+   * reconhecido" que pede conferência, é uma decisão já tomada. */
+  markedAsGuest?: boolean;
 }
 
 /** Numera as linhas devolvidas pelo servidor, preservando a ordem. */
@@ -39,6 +50,33 @@ export function applyFix(
             player_name: player.name,
             player_type: "mensalista" as const,
             confidence: 1,
+            markedAsGuest: false,
+          }
+        : row,
+    ) ?? null
+  );
+}
+
+/** Troca **uma** linha reconhecida como mensalista pelo convidado que entrou no
+ * lugar dela (`confirmAsGuest`). */
+export function applyGuest(
+  rows: ResolutionRow[] | null,
+  rowId: number,
+  guest: ConfirmAsGuestResult,
+): ResolutionRow[] | null {
+  return (
+    rows?.map((row) =>
+      row.rowId === rowId
+        ? {
+            ...row,
+            resolution: "convidado_criado" as const,
+            player_id: guest.player_id,
+            player_name: guest.player_name,
+            player_type: "convidado" as const,
+            confidence: 1,
+            waitlisted: guest.waitlisted,
+            waitlist_position: guest.waitlist_position,
+            markedAsGuest: true,
           }
         : row,
     ) ?? null
@@ -54,6 +92,9 @@ interface QuickConfirmResolutionListProps {
   /** O organizador apontou quem era de verdade nesta linha. Quem chama decide
    * se isso é uma correção (`reassign`) ou uma confirmação que faltou. */
   onFix: (row: ResolutionRow, player: Player) => void;
+  /** O organizador disse que a linha reconhecida como mensalista é, na
+   * verdade, um convidado. Sem este callback a opção não aparece. */
+  onConvertToGuest?: (row: ResolutionRow) => void;
 }
 
 /**
@@ -71,13 +112,16 @@ export function QuickConfirmResolutionList({
   isLoadingOptions = false,
   isFixing = false,
   onFix,
+  onConvertToGuest,
 }: QuickConfirmResolutionListProps) {
   const [fixOpenFor, setFixOpenFor] = useState<number | null>(null);
 
   const waitlistedCount = rows.filter((r) => r.waitlisted).length;
   const outCount = rows.filter((r) => r.resolution === "fora_da_lista").length;
   const alreadyConfirmedCount = rows.filter((r) => r.resolution === "ja_confirmado").length;
-  const pendingReviewCount = rows.filter((r) => r.resolution === "convidado_criado").length;
+  const pendingReviewCount = rows.filter(
+    (r) => r.resolution === "convidado_criado" && !r.markedAsGuest,
+  ).length;
   const invalidCount = rows.filter((r) => r.resolution === "linha_invalida").length;
 
   /** Quem de fato entrou na partida. As outras resoluções existem justamente
@@ -223,6 +267,8 @@ export function QuickConfirmResolutionList({
                     size="small"
                     variant="outlined"
                   />
+                ) : row.markedAsGuest ? (
+                  <Chip icon={<PersonIcon />} label="Convidado" size="small" variant="outlined" />
                 ) : (
                   <Chip
                     icon={<WarningIcon />}
@@ -232,7 +278,7 @@ export function QuickConfirmResolutionList({
                     variant="outlined"
                   />
                 )}
-                {row.resolution === "mensalista" && (
+                {(row.resolution === "mensalista" || row.markedAsGuest) && (
                   <Button
                     size="small"
                     onClick={() =>
@@ -244,7 +290,7 @@ export function QuickConfirmResolutionList({
                 )}
               </Box>
             </Box>
-            {(row.resolution === "convidado_criado" ||
+            {((row.resolution === "convidado_criado" && !row.markedAsGuest) ||
               row.resolution === "ja_confirmado" ||
               row.resolution === "linha_invalida" ||
               fixOpenFor === row.rowId) && (
@@ -268,6 +314,25 @@ export function QuickConfirmResolutionList({
                   setFixOpenFor(null);
                 }}
               />
+            )}
+            {/* O reconhecimento acertou um mensalista parecido, mas quem veio
+              * foi outra pessoa, de fora ("João" casou com "João Macena"). Sem
+              * esta saída, a única correção possível era trocar por outro
+              * mensalista — o convidado não tinha como entrar. */}
+            {onConvertToGuest && row.resolution === "mensalista" && fixOpenFor === row.rowId && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<PersonAddIcon />}
+                disabled={isFixing}
+                sx={{ mt: 1, alignSelf: "flex-start" }}
+                onClick={() => {
+                  onConvertToGuest(row);
+                  setFixOpenFor(null);
+                }}
+              >
+                Não é mensalista — entrar como convidado “{row.parsed_name}”
+              </Button>
             )}
           </ListItem>
         ))}

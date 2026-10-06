@@ -20,6 +20,7 @@ from common.permissions import (
 
 from .models import Confirmation, Match, RecurringGame
 from .serializers import (
+    ConfirmAsGuestSerializer,
     ConfirmedPlayerSerializer,
     MatchSerializer,
     QuickConfirmNamesSerializer,
@@ -34,6 +35,7 @@ from .serializers import (
 )
 from .services import (
     cancel_match,
+    confirm_as_guest,
     confirmed_confirmations,
     count_confirmed,
     ensure_next_match,
@@ -411,6 +413,27 @@ class MatchViewSet(OrganizationScopedViewSetMixin, viewsets.ModelViewSet):
                 "player_id": confirmation.player_id,
                 "player_name": confirmation.player.name,
                 "status": confirmation.status,
+            }
+        )
+
+    @action(detail=True, methods=["post"], url_path="confirm-as-guest")
+    def confirm_as_guest_action(self, request, pk=None):
+        match = self.get_object()
+        serializer = ConfirmAsGuestSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+
+        outcome = confirm_as_guest(
+            match=match,
+            wrong_player=serializer.validated_data["wrong_player"],
+            name=serializer.validated_data["name"],
+        )
+        return Response(
+            {
+                "player_id": outcome.player.id,
+                "player_name": outcome.player.name,
+                "player_type": outcome.player.player_type,
+                "waitlisted": outcome.waitlisted,
+                "waitlist_position": outcome.waitlist_position,
             }
         )
 

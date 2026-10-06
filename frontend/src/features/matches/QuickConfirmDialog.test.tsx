@@ -23,6 +23,7 @@ vi.mock("../../api/matchesApi", () => ({
     quickConfirm: vi.fn(),
     reassignConfirmation: vi.fn(),
     setConfirmation: vi.fn(),
+    confirmAsGuest: vi.fn(),
   },
   waitlistApi: { list: vi.fn() },
 }));
@@ -207,6 +208,60 @@ describe("escolha do mensalista certo", () => {
       expect(matchesApi.reassignConfirmation).toHaveBeenCalledWith(MATCH_ID, 99, MACEDO.id),
     );
     expect(matchesApi.setConfirmation).not.toHaveBeenCalled();
+  });
+});
+
+describe("mensalista reconhecido que era convidado", () => {
+  it("troca a linha por um convidado com o nome procurado", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.quickConfirm).mockResolvedValue([
+      resolution({
+        input_name: "3 - Firmino",
+        parsed_name: "Firmino",
+        resolution: "mensalista",
+        player_id: FIRMINO.id,
+        player_name: FIRMINO.name,
+        player_type: "mensalista",
+        confidence: 0.8,
+      }),
+    ]);
+    vi.mocked(matchesApi.confirmAsGuest).mockResolvedValue({
+      player_id: 50,
+      player_name: "Firmino",
+      player_type: "convidado",
+      waitlisted: false,
+      waitlist_position: null,
+    });
+    renderDialog();
+
+    await pasteList(user, "3 - Firmino");
+    expect(screen.getByText("Mensalista")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Corrigir" }));
+    await user.click(
+      screen.getByRole("button", { name: "Não é mensalista — entrar como convidado “Firmino”" }),
+    );
+
+    await waitFor(() =>
+      expect(matchesApi.confirmAsGuest).toHaveBeenCalledWith(MATCH_ID, FIRMINO.id, "Firmino"),
+    );
+    expect(await screen.findByText("Convidado")).toBeInTheDocument();
+    // Foi decisão do organizador: não é "não reconhecido" nem pede conferência.
+    expect(screen.queryByText("Convidado (não reconhecido)")).not.toBeInTheDocument();
+    expect(screen.queryByText(/não foram? reconhecidos? como mensalista/)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Não é essa pessoa? Busque o nome certo")).toBeNull();
+  });
+
+  it("a opção só aparece em linha reconhecida como mensalista", async () => {
+    const user = userEvent.setup();
+    vi.mocked(matchesApi.quickConfirm).mockResolvedValue([
+      resolution({ input_name: "Macedu", parsed_name: "Macedu", player_id: 99 }),
+    ]);
+    renderDialog();
+
+    await pasteList(user, "Macedu");
+
+    expect(screen.queryByRole("button", { name: /entrar como convidado/ })).toBeNull();
   });
 });
 

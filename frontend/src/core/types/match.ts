@@ -176,6 +176,16 @@ export interface QuickConfirmResolution {
   waitlist_position: number | null;
 }
 
+/** Resposta de `confirm-as-guest`: o convidado que entrou no lugar do
+ * mensalista reconhecido por engano. */
+export interface ConfirmAsGuestResult {
+  player_id: number;
+  player_name: string;
+  player_type: "convidado";
+  waitlisted: boolean;
+  waitlist_position: number | null;
+}
+
 /** Pendência do dashboard — algo que espera ação do organizador. `kind` existe
  * para a interface escolher ícone e destino sem interpretar o texto. */
 export interface DashboardPendingItem {
