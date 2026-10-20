@@ -10,7 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 
-import { CopyIcon, ExpandIcon, WhatsAppIcon } from "../../shared/icons";
+import { CopyIcon, ExpandIcon, ImageIcon, WhatsAppIcon } from "../../shared/icons";
 
 interface WhatsAppShareCardProps {
   text: string;
@@ -19,6 +19,8 @@ interface WhatsAppShareCardProps {
    * selecionado na tela, então a mensagem deve orientar o Ctrl+C. */
   onCopyFallback: () => void;
   onShare: () => void;
+  /** Baixa a imagem única com todos os times. */
+  onDownloadImage: () => void;
 }
 
 /** Bloco final da tela de resultado: a mensagem pronta para o grupo, sempre
@@ -31,7 +33,13 @@ interface WhatsAppShareCardProps {
  * isso empurrava "Copiar para WhatsApp" — a ação mais usada do produto, o
  * motivo pelo qual o organizador abriu a tela — para fora da tela. Agora os
  * botões vêm primeiro e a prévia é opcional. */
-export function WhatsAppShareCard({ text, onCopied, onCopyFallback, onShare }: WhatsAppShareCardProps) {
+export function WhatsAppShareCard({
+  text,
+  onCopied,
+  onCopyFallback,
+  onShare,
+  onDownloadImage,
+}: WhatsAppShareCardProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -69,8 +77,8 @@ export function WhatsAppShareCard({ text, onCopied, onCopyFallback, onShare }: W
           📲 Resultado para WhatsApp
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Texto gerado automaticamente a partir dos times atuais. Ele se atualiza a cada novo sorteio,
-          troca de jogador ou placar lançado.
+          Texto e imagem gerados automaticamente a partir dos times atuais — todos os times numa
+          imagem só. Eles se atualizam a cada novo sorteio, troca de jogador ou placar lançado.
         </Typography>
 
         {/* Ações primeiro: no celular, o que importa é copiar. */}
@@ -80,6 +88,9 @@ export function WhatsAppShareCard({ text, onCopied, onCopyFallback, onShare }: W
           </Button>
           <Button variant="outlined" size="large" startIcon={<WhatsAppIcon />} onClick={onShare} fullWidth>
             Enviar no WhatsApp
+          </Button>
+          <Button variant="outlined" size="large" startIcon={<ImageIcon />} onClick={onDownloadImage} fullWidth>
+            Baixar imagem
           </Button>
         </Stack>
 

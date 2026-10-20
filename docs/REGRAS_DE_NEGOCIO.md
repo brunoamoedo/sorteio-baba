@@ -442,14 +442,14 @@ Calculadas sob demanda (não persistidas), por organização, considerando apena
 ```
 ⚽🔥 SORTEIO DOS TIMES 🔥⚽
 
-🏆 Time 1 🔵:
-👤 Fulano
-👤 Beltrano
+🏆 TIME 1 🔵
 
-🆚
+Fulano
+Beltrano
 
-🏆 Time 2 🔴:
-👤 Ciclano
+🏆 TIME 2 🔴
+
+Ciclano
 
 ⚽ Boa partida! 🔥
 
@@ -458,10 +458,12 @@ Placar:
 ```
 
 - O bloco "Placar" só aparece depois que o resultado é lançado. Com 3 ou mais times (onde não existe um placar único), ele vira uma linha por time com o resultado e os gols.
+- **Só o nome de cada jogador** — sem a posição (ZAG, ME, AT…). A posição continua existindo no sorteio (`position_snapshot`): é ela que alimenta o equilíbrio por posição, a escalação na tela e o campo. A formação do time, quando existe, acompanha o cabeçalho (`🏆 TIME 1 🔵 — 2-2-1`). Convidado leva o sufixo `_(convidado)_`.
 - Os jogadores saem na mesma ordem em que o algoritmo os atribuiu ao time — sem reordenar por estrelas ou alfabeticamente. Nome de exibição = apelido, se tiver; senão o nome completo.
 - "📋 Copiar para WhatsApp" copia o texto inteiro. Se o navegador recusar a cópia programática, o texto é **selecionado na tela** e a mensagem orienta o Ctrl+C / toque longo.
-- "📤 Enviar no WhatsApp" abre o compartilhamento nativo (com as imagens dos campos, quando o dispositivo suporta) ou o `wa.me` como alternativa.
-- Também é possível exportar cada time como SVG ou PNG e imprimir a página do resultado.
+- "📤 Enviar no WhatsApp" abre o compartilhamento nativo (com a imagem única dos times, quando o dispositivo suporta) ou o `wa.me` como alternativa.
+- "🖼️ Baixar imagem" gera **uma única imagem PNG com todos os times** (`features/matches/teamsImage.ts`): um card por time em grade (2 lado a lado, 3 numa linha, 4 em 2×2, até 9 em três colunas, acima disso quatro), com a cor de identidade, o nome do time, a quantidade de jogadores, a formação, o resultado (se lançado) e os nomes — convidado com o selo vermelho. Com mais times a imagem cresce; letra e card não encolhem. A imagem não traz estrelas nem posições e usa sempre a paleta clara.
+- Também é possível exportar o campo de cada time como SVG ou PNG e imprimir a página do resultado.
 
 ## 11. Multi-tenancy e escopo dos dados — resumo técnico
 
