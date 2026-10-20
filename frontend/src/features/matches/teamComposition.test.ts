@@ -233,13 +233,22 @@ describe("texto do WhatsApp", () => {
     const before = formatDrawResultMessage(twoTeams());
     const after = formatDrawResultMessage(applyPlayerMove(twoTeams(), 1, 2)!.teams);
 
-    // A posição acompanha cada nome: quem lê no grupo precisa saber onde vai
-    // jogar, e a mensagem antes trazia só o nome.
-    expect(before).toContain("🏆 Time 1 🔵:\n👤 João (ATA)\n👤 Pedro (ATA)\n👤 Carlos (ATA)");
-    expect(after).toContain("🏆 Time 1 🔵:\n👤 Pedro (ATA)\n👤 Carlos (ATA)");
-    expect(after).toContain(
-      "🏆 Time 2 🔴:\n👤 Bruno (ATA)\n👤 Rafael (ATA)\n👤 Diego (ATA)\n👤 João (ATA)",
-    );
+    expect(before).toContain("🏆 TIME 1 🔵\n\nJoão\nPedro\nCarlos");
+    expect(after).toContain("🏆 TIME 1 🔵\n\nPedro\nCarlos");
+    expect(after).toContain("🏆 TIME 2 🔴\n\nBruno\nRafael\nDiego\nJoão");
+  });
+
+  it("não traz a posição de nenhum jogador — só os nomes", () => {
+    const texto = formatDrawResultMessage(twoTeams());
+
+    expect(texto).not.toContain("ATA");
+    expect(texto).not.toMatch(/\([A-Z]{2,3}\)/);
+    // A posição continua no time: só a mensagem deixou de mostrá-la.
+    expect(twoTeams()[0].team_players[0].position_snapshot?.code).toBe("ATA");
+  });
+
+  it("separa os times por uma linha em branco", () => {
+    expect(formatDrawResultMessage(twoTeams())).toContain("Carlos\n\n🏆 TIME 2 🔴\n\nBruno");
   });
 
   it("inclui a formação no cabeçalho de cada time", () => {
@@ -250,17 +259,17 @@ describe("texto do WhatsApp", () => {
 
     const texto = formatDrawResultMessage(teams);
 
-    expect(texto).toContain("🏆 Time 1 🔵 — 2-2-2:");
-    expect(texto).toContain("🏆 Time 2 🔴 — 3-1-2:");
+    expect(texto).toContain("🏆 TIME 1 🔵 — 2-2-2\n");
+    expect(texto).toContain("🏆 TIME 2 🔴 — 3-1-2\n");
   });
 
   it("sem formação, o cabeçalho continua como sempre foi", () => {
-    expect(formatDrawResultMessage(twoTeams())).toContain("🏆 Time 1 🔵:");
+    expect(formatDrawResultMessage(twoTeams())).toContain("🏆 TIME 1 🔵\n");
   });
 
   it("convidado continua marcado — a regra vale em todo lugar", () => {
     const teams = [team(1, [player(1, "Zé", 3, { player_type: "convidado" })])];
-    expect(formatDrawResultMessage(teams)).toContain("👤 Zé (ATA) _(convidado)_");
+    expect(formatDrawResultMessage(teams)).toContain("\nZé _(convidado)_");
   });
 });
 

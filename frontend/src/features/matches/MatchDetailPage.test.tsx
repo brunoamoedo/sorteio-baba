@@ -397,19 +397,15 @@ describe("movimentação manual de jogadores entre times", () => {
   it("atualiza o texto pronto para o WhatsApp", async () => {
     await renderDrawnMatch();
 
-    // Cada nome carrega a posição — quem lê no grupo precisa saber onde vai
-    // jogar, e a mensagem antes trazia só o nome.
-    expect(await shareText()).toContain(
-      "🏆 Time 1 🔵:\n👤 João (ZAG)\n👤 Pedro (ATA)\n👤 Carlos (ATA)",
-    );
+    // Só os nomes: a posição fica no sorteio, não na mensagem do grupo.
+    expect(await shareText()).toContain("🏆 TIME 1 🔵\n\nJoão\nPedro\nCarlos");
 
     await dropPlayerOnTeam(1, TEAM_A, TEAM_B);
 
     const depois = await shareText();
-    expect(depois).toContain("🏆 Time 1 🔵:\n👤 Pedro (ATA)\n👤 Carlos (ATA)");
-    expect(depois).toContain(
-      "🏆 Time 2 🔴:\n👤 Bruno (ZAG)\n👤 Rafael (ATA)\n👤 Diego (ATA)\n👤 João (ZAG)",
-    );
+    expect(depois).toContain("🏆 TIME 1 🔵\n\nPedro\nCarlos");
+    expect(depois).toContain("🏆 TIME 2 🔴\n\nBruno\nRafael\nDiego\nJoão");
+    expect(depois).not.toMatch(/\((ZAG|ATA)\)/);
   });
 
   it("registra a observação abaixo do campo — e só depois de haver alteração", async () => {

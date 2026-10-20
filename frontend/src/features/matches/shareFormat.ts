@@ -30,15 +30,17 @@ export function getPlayerDisplayName(teamPlayer: TeamPlayer): string {
   return teamPlayer.player_nickname || teamPlayer.player_name;
 }
 
-/** Convidado é identificado em todo lugar em que o jogador aparece — tela,
- * campo em SVG, PNG exportado, impressão e a mensagem do grupo.
+/** Linha de um jogador na mensagem: **só o nome**.
  *
- * A posição entra entre parênteses: quem lê no grupo precisa saber onde vai
- * jogar, e antes a mensagem trazia só o nome. */
+ * A posição (ZAG, ME, AT…) saiu do texto: no grupo ela virava ruído ao lado de
+ * cada nome. Ela continua existindo no sorteio — `position_snapshot` segue
+ * alimentando o equilíbrio por posição, a escalação na tela e o campo.
+ *
+ * Convidado continua identificado em todo lugar em que o jogador aparece —
+ * tela, campo em SVG, imagem exportada, impressão e a mensagem do grupo. */
 function shareLine(teamPlayer: TeamPlayer): string {
   const suffix = teamPlayer.player_type === "convidado" ? " _(convidado)_" : "";
-  const position = teamPlayer.position_snapshot?.code;
-  return `👤 ${getPlayerDisplayName(teamPlayer)}${position ? ` (${position})` : ""}${suffix}`;
+  return `${getPlayerDisplayName(teamPlayer)}${suffix}`;
 }
 
 const OUTCOME_TEXT: Record<string, string> = {
@@ -73,14 +75,14 @@ function formatScoreLine(teams: Team[]): string {
 /** Mensagem pronta para colar no WhatsApp. Os jogadores saem na mesma ordem em
  * que o algoritmo os atribuiu ao time — sem reordenar por estrelas ou nome.
  *
- * A **formação** de cada time acompanha o cabeçalho quando existe: é a
- * informação que faltava para o grupo entender o desenho, e ela muda de time
- * para time. */
+ * Cada time abre com "🏆 TIME N {emoji}" (o mesmo cabeçalho do card na tela),
+ * uma linha em branco e um nome por linha. A **formação** acompanha o
+ * cabeçalho quando existe: ela é do time, não de um jogador. */
 export function formatDrawResultMessage(teams: Team[]): string {
   const sections = teams.map((team, index) => {
     const players = team.team_players.map(shareLine).join("\n");
     const formation = team.formation ? ` — ${team.formation}` : "";
-    return `🏆 ${getTeamLabel(index)}${formation}:\n${players}`;
+    return `🏆 ${getTeamLabel(index).toUpperCase()}${formation}\n\n${players}`;
   });
 
   const score = formatScoreLine(teams);
@@ -88,7 +90,7 @@ export function formatDrawResultMessage(teams: Team[]): string {
   return [
     "⚽🔥 SORTEIO DOS TIMES 🔥⚽",
     "",
-    sections.join("\n\n🆚\n\n"),
+    sections.join("\n\n"),
     "",
     "⚽ Boa partida! 🔥",
     ...(score ? ["", "Placar:", score] : []),

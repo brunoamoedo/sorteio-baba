@@ -14,10 +14,11 @@ import {
 import { AutomaticIcon, PrintIcon, TrophyIcon } from "../../shared/icons";
 import { useToast } from "../../shared/components/ToastProvider";
 import { formatTimestamp } from "../../core/dateTime";
-import { exportPngFile, exportSvgFile, shareResult } from "./exportUtils";
+import { downloadImage, exportPngFile, exportSvgFile, shareResult } from "./exportUtils";
 import { ManualMovesNotes } from "./ManualMovesNotes";
 import { formatDrawResultMessage, getPlayerDisplayName, getTeamLabel } from "./shareFormat";
 import { TeamResultCard } from "./TeamResultCard";
+import { renderTeamsImage } from "./teamsImage";
 import { skillSpread, teamSkillTotals, type ManualMove } from "./teamComposition";
 import { WhatsAppShareCard } from "./WhatsAppShareCard";
 
@@ -55,8 +56,8 @@ interface DrawResultSectionProps {
  * SVG, observações das alterações manuais e a mensagem para o WhatsApp.
  *
  * Extraída de `MatchDetailPage`. O que é **exclusivo** desta seção mora aqui —
- * as referências dos SVGs (usadas só na exportação e no compartilhamento), o
- * texto do WhatsApp, o indicador de equilíbrio e os avisos de cópia. O pai só
+ * as referências dos SVGs (usadas na exportação de cada campo), a imagem única
+ * com todos os times, o texto do WhatsApp, o indicador de equilíbrio e os avisos de cópia. O pai só
  * passa o que ele mesmo controla: o sorteio, os sensores de arrasto e o estado
  * da seleção por toque.
  */
@@ -82,11 +83,26 @@ export function DrawResultSection({
 }: DrawResultSectionProps) {
   const { showToast } = useToast();
 
-  /** Um `<svg>` por time — a fonte da exportação em SVG/PNG e das imagens do
-   * compartilhamento nativo. Vive aqui porque só esta seção usa. */
+  /** Um `<svg>` por time — a fonte da exportação em SVG/PNG de cada campo.
+   * Vive aqui porque só esta seção usa. */
   const svgRefs = useRef<Map<number, SVGSVGElement>>(new Map());
 
   const shareText = useMemo(() => formatDrawResultMessage(draw.teams), [draw.teams]);
+
+  /** A imagem única com todos os times — a do "Baixar imagem" e a anexada no
+   * compartilhamento nativo. Gerada na hora do clique, a partir dos times
+   * atuais. */
+  const teamsImage = () => renderTeamsImage(draw.teams, formatTimestamp(draw.created_at));
+
+  const handleDownloadImage = async () => {
+    const blob = await teamsImage();
+    if (blob) {
+      downloadImage(blob, "sorteio-times.png");
+      showToast("Imagem dos times baixada!");
+    } else {
+      showToast("Não foi possível gerar a imagem neste navegador.", "error");
+    }
+  };
 
   /** Equilíbrio em linguagem de organizador.
    *
@@ -252,7 +268,8 @@ export function DrawResultSection({
         onCopyFallback={() =>
           showToast("Texto selecionado — use Ctrl+C (ou toque e segure) para copiar.", "info")
         }
-        onShare={() => void shareResult(shareText, Array.from(svgRefs.current.values()))}
+        onShare={() => void teamsImage().then((blob) => shareResult(shareText, blob))}
+        onDownloadImage={() => void handleDownloadImage()}
       />
     </>
   );

@@ -82,30 +82,19 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export async function shareResult(text: string, svgElements: SVGSVGElement[]): Promise<"shared" | "fallback"> {
+/** Baixa a imagem única com todos os times. */
+export function downloadImage(blob: Blob, filename: string) {
+  triggerDownload(blob, filename);
+}
+
+/** Compartilhamento nativo: o texto e **uma** imagem com todos os times.
+ *
+ * Antes iam N anexos, um campo por time — o grupo recebia uma sequência de
+ * imagens e ninguém via a escalação inteira de uma vez. */
+export async function shareResult(text: string, image: Blob | null): Promise<"shared" | "fallback"> {
   if (navigator.share) {
     try {
-      const files: File[] = [];
-      for (const [index, svg] of svgElements.entries()) {
-        const source = serializeSvg(svg);
-        const { width, height } = exportSize(svg);
-        const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-        const url = URL.createObjectURL(svgBlob);
-        try {
-          const image = await loadImage(url);
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          ctx?.drawImage(image, 0, 0, canvas.width, canvas.height);
-          const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-          if (pngBlob) {
-            files.push(new File([pngBlob], `time-${index + 1}.png`, { type: "image/png" }));
-          }
-        } finally {
-          URL.revokeObjectURL(url);
-        }
-      }
+      const files = image ? [new File([image], "sorteio-times.png", { type: "image/png" })] : [];
 
       if (files.length > 0 && navigator.canShare?.({ files })) {
         await navigator.share({ text, files });
