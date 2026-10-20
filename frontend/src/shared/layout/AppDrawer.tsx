@@ -92,7 +92,7 @@ export function AppDrawer({
             </Avatar>
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
-                {organizationName ?? "Sorteio da Pelada"}
+                {organizationName ?? "Sorteio do Baba"}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {userName}
