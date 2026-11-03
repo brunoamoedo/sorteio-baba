@@ -703,9 +703,14 @@ def _get_or_create_guest(*, organization, name: str) -> Player:
     lista em que todos os nomes são reconhecidos não precisa de posição
     nenhuma, e a organização não deve ser obrigada a ter posições cadastradas
     para usar o reconhecimento."""
+    # Só convidado **ativo** é reaproveitado. Um convidado inativo de mesmo
+    # nome (cadastro antigo que alguém desativou) fazia a confirmação estourar
+    # com "está inativo" — o organizador pedia um convidado e recebia um erro
+    # sobre outra pessoa. Inativo é decisão de cadastro; aqui nasce um novo.
     player = Player.objects.filter(
         organization=organization,
         player_type=Player.PlayerType.CONVIDADO,
+        status=Player.Status.ATIVO,
         name__iexact=name,
     ).first()
     if player is not None:
