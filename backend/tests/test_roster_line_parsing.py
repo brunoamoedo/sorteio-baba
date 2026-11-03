@@ -193,20 +193,19 @@ def test_full_whatsapp_list_recognizes_mensalistas_and_skips_who_left():
     assert "Vitor" not in confirmed
     assert "dentinho" not in confirmed
     assert {"João Busquets", "Sacra Rifas Novo", "Barba", "Macedo", "Zango"} <= confirmed
-    # 20 linhas - 2 marcadas com 👋 = 18 nomes processados, mas 17 jogadores:
-    # "11 - Firmino" e "13 - Santiago" se parecem os dois com o mensalista
-    # "Felipe Santiago Firmino" (o nome dele contém as duas palavras). É uma
-    # ambiguidade dos dados, não do parser.
-    #
-    # A primeira linha leva o mensalista; a segunda **não** o reconhece de novo
-    # (ele já está confirmado e saiu da disputa) e é relatada como
-    # `ja_confirmado` — a tela mostra o conflito em vez de marcar as duas linhas
-    # com o mesmo ✅ e deixar a segunda pessoa de fora sem ninguém perceber.
-    assert len(confirmed) == 17
+    # 20 linhas - 2 marcadas com 👋 = 18 nomes, 18 jogadores. "11 - Firmino" e
+    # "13 - Santiago" se parecem os dois com o mensalista "Felipe Santiago
+    # Firmino" (o nome dele contém as duas palavras). A primeira linha leva o
+    # mensalista; a segunda **não** é repetição — "Santiago" sozinho não é o
+    # nome inteiro dele, e dentro da mesma lista duas linhas são duas pessoas.
+    # Ela entra como convidado não reconhecido, visível na conferência para o
+    # organizador corrigir. Tratá-la como repetição deixava alguém de fora
+    # sem ninguém perceber.
+    assert len(confirmed) == 18
     assert by_line["11 - Firmino"]["resolution"] == "mensalista"
     assert by_line["11 - Firmino"]["player_name"] == "Felipe Santiago Firmino"
-    assert by_line["13 - Santiago"]["resolution"] == "ja_confirmado"
-    assert by_line["13 - Santiago"]["player_name"] == "Felipe Santiago Firmino"
+    assert by_line["13 - Santiago"]["resolution"] == "convidado_criado"
+    assert by_line["13 - Santiago"]["player_name"] == "Santiago"
 
 
 @pytest.mark.django_db
@@ -237,6 +236,10 @@ def test_two_similar_lines_do_not_take_the_same_mensalista():
     Antes, "Firmino" e "Santiago" caíam ambas em "Felipe Santiago Firmino": a
     segunda reconfirmava quem já estava dentro (no-op invisível) e a pessoa
     daquela linha ficava de fora sem ninguém perceber.
+
+    A segunda também não é repetição: "Santiago" é só uma palavra do nome do
+    mensalista, não ele inteiro. Entra como convidado, e a conferência mostra
+    "não reconhecido" para o organizador corrigir se for engano.
     """
     org = OrganizationFactory()
     _mensalistas(org, ["Felipe Santiago Firmino"])
@@ -246,11 +249,11 @@ def test_two_similar_lines_do_not_take_the_same_mensalista():
 
     assert results[0]["resolution"] == "mensalista"
     assert results[0]["player_name"] == "Felipe Santiago Firmino"
-    assert results[1]["resolution"] == "ja_confirmado"
-    assert results[1]["player_name"] == "Felipe Santiago Firmino"
+    assert results[1]["resolution"] == "convidado_criado"
+    assert results[1]["player_name"] == "Santiago"
     assert Confirmation.objects.filter(
         match=match, status=Confirmation.Status.CONFIRMED
-    ).count() == 1
+    ).count() == 2
 
 
 @pytest.mark.django_db
@@ -521,3 +524,85 @@ def test_pasted_list_keeps_the_tolerant_repeat_check():
     assert not Player.objects.filter(
         organization=org, player_type=Player.PlayerType.CONVIDADO, name__iexact="Leo David"
     ).exists()
+
+
+# A segunda lista de 24 que confirmou 23. "2 - Busquets" levou o mensalista
+# "João Busquets" e "18- Macena" levou "João Macena"; aí "19- João" — outra
+# pessoa — pontuava 1.0 contra os dois, porque a comparação só perguntava se
+# as palavras **digitadas** estavam no nome ("João" está em "João Macena"). A
+# linha virava repetição e o João de verdade ficava fora.
+LISTA_DE_24_COM_JOAO = """1- Sacra
+2 - Busquets
+3 - Firmino
+4 - Davizao
+5 - Deyvid
+6 - Astro
+7 - Diego
+8 - Macedo
+9 - Almada
+10 - Leonardo David
+11 - Emanuel Drogba
+12 - Dieguito Maia
+13 - Parma
+14 - Bobi
+15 - Matheus capy
+16-Jackson
+17-  Digs
+18- Macena♟️PAGO
+19- João ♟️PAGO
+20- Jonathan ♟️PAGO
+21- Cris ♟️
+22- Breno ♟️
+23- John ♟️
+24- CONVIDADO"""
+
+
+@pytest.mark.django_db
+def test_first_name_alone_is_not_a_repeat_of_a_longer_claimed_name():
+    org = OrganizationFactory()
+    _mensalistas(
+        org,
+        [
+            "Tassio",
+            "João Busquets",
+            "Leonardo David",
+            "Felipe",
+            "Almada",
+            "Barba",
+            "Astro",
+            "Bruno",
+            "João Macena",
+            "Digs",
+            "Sacra Rifas",
+            "Macedo",
+            "Diego",
+            "Jackson",
+        ],
+    )
+    Player.objects.filter(organization=org, name="Felipe").update(nickname="Firmino")
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+
+    raw_names = LISTA_DE_24_COM_JOAO.split("\n")
+    results = quick_confirm_names(match=match, raw_names=raw_names)
+
+    assert len(results) == 24
+    assert [r["input_name"] for r in results if r["resolution"] == "ja_confirmado"] == []
+    assert (
+        Confirmation.objects.filter(match=match, status=Confirmation.Status.CONFIRMED).count() == 24
+    )
+    by_line = {item["input_name"]: item for item in results}
+    assert by_line["19- João ♟️PAGO"]["player_name"] == "João"
+    assert by_line["24- CONVIDADO"]["resolution"] == "convidado"
+    assert by_line["24- CONVIDADO"]["player_name"] == "Convidado"
+
+
+@pytest.mark.django_db
+def test_exact_repeat_inside_the_same_list_is_still_a_repeat():
+    """O outro lado: a mesma pessoa colada duas vezes continua sendo repetição."""
+    org = OrganizationFactory()
+    _mensalistas(org, ["João Macena"])
+    match = MatchFactory(organization=org, max_players=40, min_players=2)
+
+    results = quick_confirm_names(match=match, raw_names=["João Macena", "Joao Macena"])
+
+    assert results[1]["resolution"] == "ja_confirmado"

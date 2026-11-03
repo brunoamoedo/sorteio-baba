@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, time, timedelta
 
@@ -17,7 +18,13 @@ from .models import (
     RecurringGame,
     WaitlistEntry,
 )
-from .name_matching import MATCH_THRESHOLD, REPEAT_THRESHOLD, best_match, parse_roster_line
+from .name_matching import (
+    MATCH_THRESHOLD,
+    REPEAT_THRESHOLD,
+    best_match,
+    exact_match,
+    parse_roster_line,
+)
 
 # ---------------------------------------------------------------------------
 # Geração de partidas a partir de jogos recorrentes
@@ -689,6 +696,33 @@ def _default_guest_position(organization) -> Position:
     return next((position for position in positions if position.code.upper() != "GOL"), positions[0])
 
 
+def _get_or_create_guest(*, organization, name: str) -> Player:
+    """O convidado com este nome — reaproveitado se já existir, criado se não.
+
+    A posição padrão só é resolvida quando um convidado é de fato criado: uma
+    lista em que todos os nomes são reconhecidos não precisa de posição
+    nenhuma, e a organização não deve ser obrigada a ter posições cadastradas
+    para usar o reconhecimento."""
+    player = Player.objects.filter(
+        organization=organization,
+        player_type=Player.PlayerType.CONVIDADO,
+        name__iexact=name,
+    ).first()
+    if player is not None:
+        return player
+    return Player.objects.create(
+        organization=organization,
+        name=name,
+        player_type=Player.PlayerType.CONVIDADO,
+        primary_position=_default_guest_position(organization),
+        # Convidado da lista colada existe só para esta partida: ele precisa de
+        # um registro para entrar no sorteio, mas não é cadastro — não aparece
+        # na tela de Jogadores e some quando a partida termina
+        # (`cleanup_temporary_guests`).
+        is_temporary=True,
+    )
+
+
 @transaction.atomic
 def quick_confirm_names(
     *, match: Match, raw_names: list[str], pasted_list: bool = True
@@ -768,11 +802,21 @@ def quick_confirm_names(
     confirmed_before = [player for player in mensalistas if player.id in confirmed_ids]
     before_threshold = MATCH_THRESHOLD if pasted_list else REPEAT_THRESHOLD
     claimed_now: list[Player] = []
-    # Resolvida sob demanda: uma lista em que todos os nomes são reconhecidos
-    # não precisa de posição padrão nenhuma, e a organização não deve ser
-    # obrigada a ter posições cadastradas para usar o reconhecimento.
-    default_position: Position | None = None
 
+    # Nome escrito **exatamente** vence semelhança. Sem isto, a ordem da lista
+    # decidia: "5 - Deyvid" chegava antes, levava o mensalista "Leonardo David"
+    # por semelhança (0.73), e a linha "10 - Leonardo David" — o nome exato —
+    # virava repetição e não confirmava ninguém. Quem é nomeado exatamente por
+    # alguma linha fica reservado para ela.
+    reserved: Counter[int] = Counter()
+    for raw in raw_names:
+        line = parse_roster_line(raw)
+        if line is not None and not line.is_out and not line.is_guest:
+            named = exact_match(line.name, available)
+            if named is not None:
+                reserved[named.id] += 1
+
+    guests_now: set[int] = set()
     results = []
     for raw in raw_names:
         line = parse_roster_line(raw)
@@ -818,10 +862,31 @@ def quick_confirm_names(
             continue
 
         name = line.name
-        player, score = best_match(name, available)
+        player, score = None, 1.0
+        if not line.is_guest:
+            player = exact_match(name, available)
+            if player is not None:
+                reserved[player.id] -= 1
+            else:
+                player, score = best_match(
+                    name, [p for p in available if reserved[p.id] <= 0]
+                )
         resolution = "mensalista"
 
-        if player is None:
+        if line.is_guest:
+            # O organizador escreveu que é convidado: o reconhecimento não
+            # entra. Casar "Pedro (convidado)" com o mensalista Pedro era
+            # confirmar a pessoa errada.
+            player = _get_or_create_guest(organization=organization, name=name)
+            # Duas linhas "CONVIDADO" na mesma lista são duas pessoas, não a
+            # mesma confirmada duas vezes.
+            suffix = 1
+            while player.id in guests_now:
+                suffix += 1
+                player = _get_or_create_guest(organization=organization, name=f"{name} {suffix}")
+            guests_now.add(player.id)
+            resolution = "convidado"
+        elif player is None:
             # Não sobrou mensalista disponível parecido com este nome. Antes de
             # criar um convidado, confere os que **já estão confirmados**: se a
             # linha repete alguém que já está na partida, criar um convidado
@@ -832,8 +897,10 @@ def quick_confirm_names(
                 name, confirmed_before, threshold=before_threshold
             )
             if repeated is None:
+                # Simétrico: dentro da mesma lista, "João" não é repetição de
+                # "João Macena" que a linha "Macena" levou — são duas pessoas.
                 repeated, repeated_score = best_match(
-                    name, claimed_now, threshold=REPEAT_THRESHOLD
+                    name, claimed_now, threshold=REPEAT_THRESHOLD, symmetric=True
                 )
             if repeated is not None:
                 results.append(
@@ -851,25 +918,7 @@ def quick_confirm_names(
                 )
                 continue
 
-            player = Player.objects.filter(
-                organization=organization,
-                player_type=Player.PlayerType.CONVIDADO,
-                name__iexact=name,
-            ).first()
-            if player is None:
-                if default_position is None:
-                    default_position = _default_guest_position(organization)
-                player = Player.objects.create(
-                    organization=organization,
-                    name=name,
-                    player_type=Player.PlayerType.CONVIDADO,
-                    primary_position=default_position,
-                    # Convidado da lista colada existe só para esta partida: ele
-                    # precisa de um registro para entrar no sorteio, mas não é
-                    # cadastro — não aparece na tela de Jogadores e some quando
-                    # a partida termina (`cleanup_temporary_guests`).
-                    is_temporary=True,
-                )
+            player = _get_or_create_guest(organization=organization, name=name)
             resolution = "convidado_criado"
         else:
             # Reconhecido: sai da disputa e passa a contar como já confirmado,
@@ -932,6 +981,42 @@ def reassign_confirmation(*, match: Match, wrong_player: Player, correct_player:
         wrong_player.delete()
 
     return outcome.confirmation
+
+
+@transaction.atomic
+def confirm_as_guest(
+    *, match: Match, name: str, replacing: Player | None = None
+) -> ConfirmationOutcome:
+    """Confirma `name` como **convidado** nesta partida — a escolha explícita
+    do organizador na conferência da lista ("É convidado").
+
+    É o caminho para quando o reconhecimento acertou o nome e errou a pessoa:
+    o "Pedro" da lista era um amigo, não o mensalista Pedro. `replacing` é quem
+    aquela linha tinha confirmado por engano; ele sai **antes** de o convidado
+    entrar, pelo mesmo motivo de `reassign_confirmation` — senão a vaga
+    liberada iria para a fila e o convidado cairia na espera.
+
+    Sem `replacing` (a linha não tinha confirmado ninguém, ex.: `ja_confirmado`)
+    é só a confirmação que faltou."""
+    name = " ".join(name.split())
+    if not name:
+        raise DomainError("Informe o nome do convidado.")
+
+    guest = _get_or_create_guest(organization=match.organization, name=name)
+    if replacing is not None and replacing.id == guest.id:
+        # A linha já é este convidado: nada a corrigir.
+        return set_confirmation(match=match, player=guest, status=Confirmation.Status.CONFIRMED)
+    if guest.id in {confirmation.player_id for confirmation in confirmed_confirmations(match)}:
+        raise DomainError(f"{guest.name} já está confirmado nesta partida.")
+
+    if replacing is not None:
+        set_confirmation(
+            match=match,
+            player=replacing,
+            status=Confirmation.Status.DECLINED,
+            allow_waitlist=False,
+        )
+    return set_confirmation(match=match, player=guest, status=Confirmation.Status.CONFIRMED)
 
 
 # ---------------------------------------------------------------------------

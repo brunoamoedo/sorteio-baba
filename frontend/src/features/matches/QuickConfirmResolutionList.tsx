@@ -1,9 +1,16 @@
 import { useState } from "react";
-import { Alert, Box, Button, Chip, List, ListItem, ListItemText } from "@mui/material";
+import { Alert, Box, Button, Chip, List, ListItem, ListItemText, Typography } from "@mui/material";
 
 import type { QuickConfirmResolution } from "../../core/types/match";
 import type { Player } from "../../core/types/player";
-import { ConfirmIcon, DeclineIcon, PlayersIcon, WaitlistIcon, WarningIcon } from "../../shared/icons";
+import {
+  ConfirmIcon,
+  DeclineIcon,
+  PersonAddIcon,
+  PlayersIcon,
+  WaitlistIcon,
+  WarningIcon,
+} from "../../shared/icons";
 import { MensalistaSearchAutocomplete } from "./MensalistaSearchAutocomplete";
 
 /** Cada linha processada ganha um índice estável. A chave anterior era o nome
@@ -45,6 +52,32 @@ export function applyFix(
   );
 }
 
+/** Troca **uma** linha pelo convidado que o organizador escolheu ("É
+ * convidado"). Por `rowId`, pelo mesmo motivo de `applyFix`. */
+export function applyGuest(
+  rows: ResolutionRow[] | null,
+  rowId: number,
+  guest: Pick<
+    QuickConfirmResolution,
+    "player_id" | "player_name" | "player_type" | "waitlisted" | "waitlist_position"
+  >,
+): ResolutionRow[] | null {
+  return (
+    rows?.map((row) =>
+      row.rowId === rowId
+        ? { ...row, ...guest, resolution: "convidado" as const, confidence: 1 }
+        : row,
+    ) ?? null
+  );
+}
+
+/** Linhas que dá para marcar como convidado: as que levaram um mensalista
+ * (pode ser outra pessoa de mesmo nome) e as repetidas (pode ser outra pessoa
+ * de nome parecido). Linha sem nome não tem com que nome criar o convidado. */
+export function canMarkAsGuest(row: ResolutionRow): boolean {
+  return row.resolution === "mensalista" || row.resolution === "ja_confirmado";
+}
+
 interface QuickConfirmResolutionListProps {
   rows: ResolutionRow[];
   /** Mensalistas que ainda podem ser escolhidos nesta partida. */
@@ -54,6 +87,9 @@ interface QuickConfirmResolutionListProps {
   /** O organizador apontou quem era de verdade nesta linha. Quem chama decide
    * se isso é uma correção (`reassign`) ou uma confirmação que faltou. */
   onFix: (row: ResolutionRow, player: Player) => void;
+  /** O organizador disse que a linha é um convidado, não o mensalista que o
+   * reconhecimento escolheu. */
+  onMarkGuest?: (row: ResolutionRow) => void;
 }
 
 /**
@@ -71,6 +107,7 @@ export function QuickConfirmResolutionList({
   isLoadingOptions = false,
   isFixing = false,
   onFix,
+  onMarkGuest,
 }: QuickConfirmResolutionListProps) {
   const [fixOpenFor, setFixOpenFor] = useState<number | null>(null);
 
@@ -83,7 +120,10 @@ export function QuickConfirmResolutionList({
   /** Quem de fato entrou na partida. As outras resoluções existem justamente
    * para **não** confirmar ninguém. */
   const enteredCount = rows.filter(
-    (r) => r.resolution === "mensalista" || r.resolution === "convidado_criado",
+    (r) =>
+      r.resolution === "mensalista" ||
+      r.resolution === "convidado_criado" ||
+      r.resolution === "convidado",
   ).length;
   const missingCount = rows.length - enteredCount;
 
@@ -152,6 +192,12 @@ export function QuickConfirmResolutionList({
           Se algum for engano (é mensalista, só não bateu o nome), busque o nome certo abaixo.
         </Alert>
       )}
+      {onMarkGuest && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Algum nome foi reconhecido como mensalista mas é <strong>convidado</strong> (outra
+          pessoa de mesmo nome)? Toque em <strong>É convidado</strong> na linha.
+        </Typography>
+      )}
       <List dense disablePadding>
         {rows.map((row) => (
           <ListItem
@@ -173,7 +219,11 @@ export function QuickConfirmResolutionList({
                 secondary={
                   row.resolution === "linha_invalida"
                     ? "Não sobrou nome nenhum depois de tirar numeração e emoji"
-                    : row.resolution === "mensalista" && row.player_name !== row.parsed_name
+                    : row.resolution === "convidado"
+                      ? row.player_name !== row.input_name
+                        ? `Entra como “${row.player_name}”`
+                        : undefined
+                      : row.resolution === "mensalista" && row.player_name !== row.parsed_name
                       ? `Reconhecido como ${row.player_name}`
                       : // Mostra o que sobrou depois de tirar numeração/emoji/anotação:
                         // é isso que explica um reconhecimento inesperado.
@@ -215,6 +265,15 @@ export function QuickConfirmResolutionList({
                     size="small"
                     variant="outlined"
                   />
+                ) : row.resolution === "convidado" ? (
+                  // Convidado sempre em vermelho — a mesma regra do resultado.
+                  <Chip
+                    icon={<PersonAddIcon />}
+                    label="Convidado"
+                    color="error"
+                    size="small"
+                    variant="outlined"
+                  />
                 ) : row.resolution === "mensalista" ? (
                   <Chip
                     icon={<ConfirmIcon />}
@@ -240,6 +299,19 @@ export function QuickConfirmResolutionList({
                     }
                   >
                     Corrigir
+                  </Button>
+                )}
+                {onMarkGuest && canMarkAsGuest(row) && (
+                  <Button
+                    size="small"
+                    color="error"
+                    disabled={isFixing}
+                    onClick={() => {
+                      onMarkGuest(row);
+                      setFixOpenFor(null);
+                    }}
+                  >
+                    É convidado
                   </Button>
                 )}
               </Box>
