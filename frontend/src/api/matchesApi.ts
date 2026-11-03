@@ -140,6 +140,27 @@ export const matchesApi = {
     });
     return data;
   },
+  /**
+   * Confirma `name` como **convidado**, sem reconhecimento de mensalista.
+   * `replacingPlayerId` é quem a linha da lista tinha confirmado por engano —
+   * sai antes de o convidado entrar.
+   */
+  confirmAsGuest: async (
+    matchId: number,
+    name: string,
+    replacingPlayerId: number | null,
+  ): Promise<
+    Pick<
+      QuickConfirmResolution,
+      "player_id" | "player_name" | "player_type" | "waitlisted" | "waitlist_position"
+    >
+  > => {
+    const { data } = await apiClient.post(`/matches/${matchId}/confirm-as-guest/`, {
+      name,
+      replacing: replacingPlayerId,
+    });
+    return data;
+  },
 };
 
 export const waitlistApi = {

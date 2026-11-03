@@ -27,6 +27,7 @@ import { BulkNamesInput, splitNames } from "./BulkNamesInput";
 import { MensalistaSearchAutocomplete, mensalistaLabel } from "./MensalistaSearchAutocomplete";
 import {
   applyFix,
+  applyGuest,
   QuickConfirmResolutionList,
   toResolutionRows,
   type ResolutionRow,
@@ -154,6 +155,17 @@ export function DrawAvulsoPage() {
     ({ player }: { row: ResolutionRow; player: Player }) =>
       matchesApi.setConfirmation(match?.id ?? 0, player.id, "confirmed").then(() => player),
     { onSuccess: (player, { row }) => setResolutions((c) => applyFix(c, row.rowId, player)) },
+  );
+
+  /** "É convidado" — mesma regra do diálogo da tela da partida. */
+  const markGuestMutation = useApiMutation(
+    (row: ResolutionRow) =>
+      matchesApi.confirmAsGuest(
+        match?.id ?? 0,
+        row.parsed_name,
+        row.resolution === "mensalista" ? row.player_id : null,
+      ),
+    { onSuccess: (guest, row) => setResolutions((c) => applyGuest(c, row.rowId, guest)) },
   );
 
   const drawMutation = useApiMutation(() => drawsApi.trigger(match?.id ?? 0), {
@@ -316,13 +328,27 @@ export function DrawAvulsoPage() {
               </Alert>
             )}
 
+            {markGuestMutation.isError && (
+              <Alert severity="error">
+                {getApiErrorMessage(
+                  markGuestMutation.error,
+                  "Não foi possível confirmar como convidado.",
+                )}
+              </Alert>
+            )}
+
             <Card variant="outlined">
               <CardContent>
                 <QuickConfirmResolutionList
                   rows={resolutions}
                   availableMensalistas={availableToFix}
                   isLoadingOptions={mensalistasQuery.isLoading}
-                  isFixing={reassignMutation.isPending || confirmInsteadMutation.isPending}
+                  isFixing={
+                    reassignMutation.isPending ||
+                    confirmInsteadMutation.isPending ||
+                    markGuestMutation.isPending
+                  }
+                  onMarkGuest={(row) => markGuestMutation.mutate(row)}
                   onFix={(row, player) => {
                     if (row.resolution === "ja_confirmado" || row.resolution === "linha_invalida") {
                       confirmInsteadMutation.mutate({ row, player });

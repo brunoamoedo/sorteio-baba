@@ -17,6 +17,7 @@ import { BulkNamesInput, splitNames } from "./BulkNamesInput";
 import { matchKeys, useMatchInvalidation } from "./matchQueries";
 import {
   applyFix,
+  applyGuest,
   QuickConfirmResolutionList,
   toResolutionRows,
   type ResolutionRow,
@@ -115,12 +116,31 @@ export function QuickConfirmDialog({ open, matchId, onClose }: QuickConfirmDialo
     },
   );
 
+  /** "É convidado": a linha era outra pessoa, não o mensalista reconhecido.
+   * Numa linha `ja_confirmado` o jogador dela é quem **já estava** dentro por
+   * outra linha — não é engano desta, então não sai. */
+  const markGuestMutation = useApiMutation(
+    (row: ResolutionRow) =>
+      matchesApi.confirmAsGuest(
+        matchId,
+        row.parsed_name,
+        row.resolution === "mensalista" ? row.player_id : null,
+      ),
+    {
+      onSuccess: (guest, row) => {
+        setResolutions((current) => applyGuest(current, row.rowId, guest));
+        invalidate.presence();
+      },
+    },
+  );
+
   const handleClose = () => {
     setNamesText("");
     setResolutions(null);
     quickConfirmMutation.reset();
     reassignMutation.reset();
     confirmInsteadMutation.reset();
+    markGuestMutation.reset();
     onClose();
   };
 
@@ -146,7 +166,8 @@ export function QuickConfirmDialog({ open, matchId, onClose }: QuickConfirmDialo
                   <strong>pode colar com numeração, emojis e anotações</strong> (“3 - Zango
                   ♟️(Sacra) PAGO” é lido como “Zango”). Quem for reconhecido como mensalista já é
                   confirmado; quem não for encontrado entra como convidado (e dá pra corrigir
-                  depois). Linhas marcadas com 👋 ou ❌ são listadas como{" "}
+                  depois). Para marcar alguém como <strong>convidado</strong>, escreva
+                  “(convidado)” na linha — “Pedro (convidado)”. Linhas marcadas com 👋 ou ❌ são listadas como{" "}
                   <strong>fora da lista</strong> e não são confirmadas. Se a partida lotar, o
                   restante vai para a lista de espera.
                 </>
@@ -173,11 +194,24 @@ export function QuickConfirmDialog({ open, matchId, onClose }: QuickConfirmDialo
                 )}
               </Alert>
             )}
+            {markGuestMutation.isError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {getApiErrorMessage(
+                  markGuestMutation.error,
+                  "Não foi possível confirmar como convidado.",
+                )}
+              </Alert>
+            )}
             <QuickConfirmResolutionList
               rows={resolutions}
               availableMensalistas={availableMensalistas}
               isLoadingOptions={mensalistasQuery.isLoading || rosterQuery.isLoading}
-              isFixing={reassignMutation.isPending || confirmInsteadMutation.isPending}
+              isFixing={
+                reassignMutation.isPending ||
+                confirmInsteadMutation.isPending ||
+                markGuestMutation.isPending
+              }
+              onMarkGuest={(row) => markGuestMutation.mutate(row)}
               onFix={(row, player) => {
                 // Estas linhas não confirmaram ninguém: não há o que desfazer,
                 // só o que confirmar.

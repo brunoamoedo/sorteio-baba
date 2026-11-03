@@ -365,6 +365,15 @@ class ReassignConfirmationSerializer(_OrganizationScopedPlayerSerializer):
     correct_player = serializers.PrimaryKeyRelatedField(queryset=Player.objects.none())
 
 
+class ConfirmAsGuestSerializer(_OrganizationScopedPlayerSerializer):
+    name = serializers.CharField(max_length=150)
+    # Quem a linha da lista tinha confirmado por engano — sai para o convidado
+    # entrar. Opcional: uma linha que não confirmou ninguém não tem o que trocar.
+    replacing = serializers.PrimaryKeyRelatedField(
+        queryset=Player.objects.none(), required=False, allow_null=True
+    )
+
+
 class WaitlistPlayerSerializer(_OrganizationScopedPlayerSerializer):
     player = serializers.PrimaryKeyRelatedField(queryset=Player.objects.none())
 

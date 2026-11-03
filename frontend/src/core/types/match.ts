@@ -147,6 +147,9 @@ export interface QuickConfirmResolution {
    * que foi procurado entre os mensalistas. */
   parsed_name: string;
   /**
+   * - `convidado`: o organizador marcou a linha como convidado ("Pedro
+   *   (convidado)", "24- CONVIDADO") ou escolheu "É convidado" na conferência —
+   *   entrou como convidado **sem** passar pelo reconhecimento de mensalistas.
    * - `fora_da_lista`: linha marcada com 👋/❌ — relatada, mas **não** confirmada.
    * - `ja_confirmado`: a linha **repete** alguém que já está confirmado (lista
    *   colada duas vezes, ou duas linhas com praticamente o mesmo nome
@@ -163,6 +166,7 @@ export interface QuickConfirmResolution {
   resolution:
     | "mensalista"
     | "convidado_criado"
+    | "convidado"
     | "fora_da_lista"
     | "ja_confirmado"
     | "linha_invalida";

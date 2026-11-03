@@ -21,8 +21,10 @@ const DEFAULT_HELPER = (
     Cole a lista do grupo, um nome por linha —{" "}
     <strong>pode colar com numeração, emojis e anotações</strong> (“3 - Zango ♟️(Sacra) PAGO” é
     lido como “Zango”). Quem for reconhecido como mensalista já é confirmado; quem não for
-    encontrado entra como convidado (e dá pra corrigir depois). Linhas marcadas com 👋 ou ❌ são
-    listadas como <strong>fora da lista</strong> e não são confirmadas.
+    encontrado entra como convidado (e dá pra corrigir depois). Para marcar alguém como{" "}
+    <strong>convidado</strong>, escreva “(convidado)” na linha — “Pedro (convidado)” entra como
+    convidado mesmo que exista um mensalista Pedro. Linhas marcadas com 👋 ou ❌ são listadas como{" "}
+    <strong>fora da lista</strong> e não são confirmadas.
   </>
 );
 
@@ -63,7 +65,7 @@ export function BulkNamesInput({
         fullWidth
         autoFocus={autoFocus}
         disabled={disabled}
-        placeholder={"1 - João Busquets\n2 - Sacra\n3 - Barba\n👋 - Vitor"}
+        placeholder={"1 - João Busquets\n2 - Sacra\n3 - Pedro (convidado)\n👋 - Vitor"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

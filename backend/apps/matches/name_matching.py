@@ -84,6 +84,16 @@ _ANNOTATION_WORDS = frozenset(
     {"pago", "pagou", "pg", "pix", "deve", "devendo", "falta", "faltou", "ok"}
 )
 
+# Marcador de convidado escrito na própria linha: "Pedro (convidado)", "Pedro
+# conv", "Pedro (convidado do Barba)". Procurado na linha **normalizada**, antes
+# de os parênteses saírem — no grupo ele quase sempre vem entre parênteses, e
+# junto com quem convidou. A palavra solta também sai do nome
+# (`_GUEST_WORDS`), senão o convidado nasceria chamado "Pedro conv".
+_GUEST_MARKER = re.compile(r"\b(convidad[oa]s?|conv)\b")
+_GUEST_WORDS = frozenset(
+    {"convidado", "convidada", "convidados", "convidadas", "conv", "conv."}
+)
+
 
 @dataclass(frozen=True)
 class RosterLine:
@@ -100,6 +110,11 @@ class RosterLine:
     is_out: bool
     """Linha marcada com 👋/❌: a pessoa saiu da lista."""
 
+    is_guest: bool = False
+    """Linha marcada como convidado pelo organizador: entra como convidado
+    **sem** passar pelo reconhecimento de mensalistas — um "Pedro (convidado)"
+    não é o mensalista Pedro."""
+
 
 def parse_roster_line(raw: str) -> RosterLine | None:
     """Extrai o nome de uma linha da lista colada. Devolve `None` quando não
@@ -109,6 +124,7 @@ def parse_roster_line(raw: str) -> RosterLine | None:
         return None
 
     is_out = any(marker in text for marker in OUT_MARKERS)
+    is_guest = bool(_GUEST_MARKER.search(normalize(text)))
 
     # Emojis primeiro: eles podem vir **antes** da numeração ("⚽ 5 - Bibito"),
     # e aí a numeração só é reconhecida como início de linha depois que o emoji
@@ -121,12 +137,20 @@ def parse_roster_line(raw: str) -> RosterLine | None:
     text = _LEADING_SEPARATOR.sub("", text)
 
     words = text.split()
-    kept = [word for word in words if normalize(word) not in _ANNOTATION_WORDS]
+    kept = [
+        word
+        for word in words
+        if normalize(word) not in _ANNOTATION_WORDS and normalize(word) not in _GUEST_WORDS
+    ]
     name = " ".join(kept or words).strip()
+    if is_guest and not kept:
+        # A linha era só o marcador ("24- CONVIDADO"): uma vaga de convidado
+        # sem nome ainda.
+        name = "Convidado"
 
     if not normalize(name):
         return None
-    return RosterLine(raw=raw.strip(), name=name, is_out=is_out)
+    return RosterLine(raw=raw.strip(), name=name, is_out=is_out, is_guest=is_guest)
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +171,22 @@ def _token_score(input_tokens: list[str], candidate_tokens: list[str]) -> float:
     return sum(per_token_best) / len(per_token_best)
 
 
+def exact_match(name: str, candidates: list[Player]) -> Player | None:
+    """O candidato cujo nome ou apelido é **exatamente** `name` (sem contar
+    acento e caixa)."""
+    wanted = normalize(name)
+    for player in candidates:
+        if any(normalize(candidate) == wanted for candidate in filter(None, [player.name, player.nickname])):
+            return player
+    return None
+
+
 def best_match(
-    name: str, candidates: list[Player], *, threshold: float = MATCH_THRESHOLD
+    name: str,
+    candidates: list[Player],
+    *,
+    threshold: float = MATCH_THRESHOLD,
+    symmetric: bool = False,
 ) -> tuple[Player | None, float]:
     """Encontra o mensalista mais parecido com `name` (nome ou apelido), ignorando
     acentos/caixa. Usado para reconhecer mensalistas a partir de uma lista de nomes
@@ -162,7 +200,12 @@ def best_match(
     tanto para o mensalista "Barba" quanto para "Bruno barba" (o token bate nos
     dois), e sem critério de desempate vencia simplesmente o primeiro da
     consulta. Ganha quem bate o nome inteiro; depois, quem tem menos palavras
-    sobrando em relação ao que foi digitado."""
+    sobrando em relação ao que foi digitado.
+
+    `symmetric=True` cobra a semelhança **nos dois sentidos**: não basta as
+    palavras digitadas estarem no nome do candidato, as do candidato também
+    precisam estar no que foi digitado. É a pergunta "é a mesma pessoa?" — no
+    sentido único, "João" pontuava 1.0 contra "João Macena"."""
     input_tokens = normalize(name).split()
     normalized_input = " ".join(input_tokens)
 
@@ -174,6 +217,8 @@ def best_match(
         for candidate_name in filter(None, [player.name, player.nickname]):
             candidate_tokens = normalize(candidate_name).split()
             score = _token_score(input_tokens, candidate_tokens)
+            if symmetric:
+                score = min(score, _token_score(candidate_tokens, input_tokens))
             rank = (
                 score,
                 1 if " ".join(candidate_tokens) == normalized_input else 0,

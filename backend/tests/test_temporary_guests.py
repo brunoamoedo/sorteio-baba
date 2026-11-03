@@ -256,3 +256,83 @@ def test_canceled_match_status_does_not_keep_a_guest_alive():
     removidos = cleanup_temporary_guests(match=atual)
 
     assert [p.name for p in removidos] == ["Zango"]
+
+
+# ---------------------------------------------------------------------------
+# Marcar como convidado na lista
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_line_marked_as_guest_skips_mensalista_recognition():
+    """"Pedro (convidado do Barba)" é um amigo, não o mensalista Pedro."""
+    org = _org_with_position()
+    pedro = PlayerFactory(organization=org, name="Pedro", player_type=Player.PlayerType.MENSALISTA)
+    match = MatchFactory(organization=org, max_players=20, min_players=2)
+
+    results = quick_confirm_names(
+        match=match, raw_names=["Pedro (convidado do Barba)", "Lucas conv", "Pedro"]
+    )
+
+    assert [r["resolution"] for r in results] == ["convidado", "convidado", "mensalista"]
+    assert results[0]["player_name"] == "Pedro"
+    assert results[0]["player_type"] == Player.PlayerType.CONVIDADO
+    assert results[1]["player_name"] == "Lucas"
+    assert results[2]["player_id"] == pedro.id
+    assert match.confirmations.filter(status=Confirmation.Status.CONFIRMED).count() == 3
+
+
+@pytest.mark.django_db
+def test_two_unnamed_guest_lines_are_two_people():
+    org = _org_with_position()
+    match = MatchFactory(organization=org, max_players=20, min_players=2)
+
+    results = quick_confirm_names(match=match, raw_names=["23- CONVIDADO", "24- Convidado"])
+
+    assert [r["player_name"] for r in results] == ["Convidado", "Convidado 2"]
+    assert match.confirmations.filter(status=Confirmation.Status.CONFIRMED).count() == 2
+
+
+@pytest.mark.django_db
+def test_confirm_as_guest_replaces_the_wrongly_recognized_mensalista():
+    org = _org_with_position()
+    membership = MembershipFactory(organization=org, role=ROLE_ORGANIZADOR)
+    client = authenticated_client(membership.user, organization=org)
+    pedro = PlayerFactory(organization=org, name="Pedro", player_type=Player.PlayerType.MENSALISTA)
+    match = MatchFactory(organization=org, max_players=20, min_players=2)
+    quick_confirm_names(match=match, raw_names=["Pedro"])
+
+    response = client.post(
+        f"/api/matches/{match.id}/confirm-as-guest/",
+        {"name": "Pedro", "replacing": pedro.id},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body["player_type"] == Player.PlayerType.CONVIDADO
+    assert body["player_id"] != pedro.id
+    confirmados = set(
+        match.confirmations.filter(status=Confirmation.Status.CONFIRMED).values_list(
+            "player_id", flat=True
+        )
+    )
+    assert confirmados == {body["player_id"]}
+    guest = Player.all_objects.get(pk=body["player_id"])
+    assert guest.is_temporary
+
+
+@pytest.mark.django_db
+def test_confirm_as_guest_without_replacing_just_confirms():
+    org = _org_with_position()
+    membership = MembershipFactory(organization=org, role=ROLE_ORGANIZADOR)
+    client = authenticated_client(membership.user, organization=org)
+    match = MatchFactory(organization=org, max_players=20, min_players=2)
+
+    response = client.post(
+        f"/api/matches/{match.id}/confirm-as-guest/", {"name": "  Zé  "}, format="json"
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["player_name"] == "Zé"
+    assert match.confirmations.filter(status=Confirmation.Status.CONFIRMED).count() == 1
