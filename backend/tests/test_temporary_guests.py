@@ -336,3 +336,23 @@ def test_confirm_as_guest_without_replacing_just_confirms():
     assert response.status_code == 200, response.content
     assert response.json()["player_name"] == "Zé"
     assert match.confirmations.filter(status=Confirmation.Status.CONFIRMED).count() == 1
+
+
+@pytest.mark.django_db
+def test_inactive_guest_with_the_same_name_is_not_reused():
+    """Um "Breno" convidado antigo, inativo, fazia "É convidado" falhar com
+    "Breno está inativo" em vez de confirmar o Breno de hoje."""
+    org = _org_with_position()
+    antigo = PlayerFactory(
+        organization=org,
+        name="Breno",
+        player_type=Player.PlayerType.CONVIDADO,
+        status=Player.Status.INATIVO,
+    )
+    match = MatchFactory(organization=org, max_players=20, min_players=2)
+
+    results = quick_confirm_names(match=match, raw_names=["Breno (convidado)", "Breno"])
+
+    assert results[0]["resolution"] == "convidado"
+    assert results[0]["player_id"] != antigo.id
+    assert match.confirmations.filter(status=Confirmation.Status.CONFIRMED).count() == 1
