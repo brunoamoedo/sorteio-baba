@@ -108,7 +108,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 component="p"
                 sx={{ fontWeight: 700, whiteSpace: "nowrap", lineHeight: 1.2 }}
               >
-                Sorteio da Pelada
+                Sorteio do Baba
               </Typography>
               {/* Sempre visível, inclusive no celular: escondê-lo em `xs` fazia
                   quem participa de mais de uma pelada não saber onde estava. */}

@@ -48,7 +48,7 @@ export function LoginPage() {
     >
       <Paper elevation={3} sx={{ p: 4, width: "100%", maxWidth: 360 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
-          Sorteio da Pelada
+          Sorteio do Baba
         </Typography>
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
           <Stack spacing={2}>

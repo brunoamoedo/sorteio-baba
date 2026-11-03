@@ -1,6 +1,6 @@
 {
-  "name": "Sorteio da Pelada",
-  "short_name": "Pelada",
+  "name": "Sorteio do Baba",
+  "short_name": "Baba",
   "description": "Gestão de peladas de futebol com sorteio inteligente de times equilibrados.",
   "lang": "pt-BR",
   "start_url": "/",
